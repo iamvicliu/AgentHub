@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import type Database from 'better-sqlite3'
 
 // Listed in the UI: any snapshot Spool itself produced under
-// ~/.spool/backups/. The narrower regex below distinguishes automated
+// ~/.agenthub/backups/. The narrower regex below distinguishes automated
 // schema-migration snapshots (kind: 'auto') from human-named rollback
 // points (kind: 'manual') so the UI can surface that difference.
 const SPOOL_BACKUP_RE = /^spool-pre-.+\.db$/

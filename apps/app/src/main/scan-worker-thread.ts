@@ -11,7 +11,7 @@
 //   • Constructs makeScanWorker the same way main used to do
 //     in-process, then exposes its commands + streams over
 //     parentPort.postMessage.
-//   • Reads preferences directly from ~/.spool/security.json on
+//   • Reads preferences directly from ~/.agenthub/security.json on
 //     every scan via the same loadSecurityPreferences helper. The
 //     main process owns the file (SET_PREFS handler writes it);
 //     this thread re-reads on every call so pref changes take
@@ -122,7 +122,7 @@ void (async () => {
   // was updated — those findings get dropped, and without this they
   // vanish with zero diagnostic. Emit a span (label as attribute, no
   // value) through the worker's own OTel runtime; the prod file
-  // exporter persists it to ~/.spool/logs. Fire-and-forget so the scan
+  // exporter persists it to ~/.agenthub/logs. Fire-and-forget so the scan
   // hot path never awaits the export.
   setUnknownLabelSink((label) => {
     void runEff(

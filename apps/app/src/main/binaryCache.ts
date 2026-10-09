@@ -16,7 +16,7 @@ import {
  * for several seconds and produces a launch beachball.
  *
  * Stored as a flat `{ [bin]: path | null }` JSON next to `ui.json` under
- * `~/.spool/`. Reads on hydrate are best-effort: a missing or malformed
+ * `~/.agenthub/`. Reads on hydrate are best-effort: a missing or malformed
  * file just yields an empty cache and the next resolve falls through to
  * the live lookup. Writes happen after every successful resolve, so the
  * very next launch is fast.

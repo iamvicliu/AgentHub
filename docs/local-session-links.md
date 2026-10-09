@@ -1,7 +1,5 @@
 # Local session viewer links (v1)
 
-Since AgentHub 1.0.0 the scheme is `agenthub://`; earlier builds used `spool://`, which is no longer registered.
-
 `agenthub://session/<sessionUuid>` opens an indexed local session for reading only.
 It never runs an Agent, resumes a CLI or uploads content. Existing
 `agenthub://auth/callback` authentication links retain their separate listener.

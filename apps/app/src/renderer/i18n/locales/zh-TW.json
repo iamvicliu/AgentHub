@@ -374,7 +374,7 @@
       "backups_label": "SQLite 備份",
       "backups_sub": "AgentHub 在執行破壞性遷移或手動回滾前保存的快照。選擇要刪除的項目。",
       "backups_loading": "載入中…",
-      "backups_empty": "~/.spool/backups/ 中沒有備份。",
+      "backups_empty": "~/.agenthub/backups/ 中沒有備份。",
       "backups_summary": "{{count}} 個檔案 · 總計 {{size}}",
       "backups_select_auto": "選擇自動備份 ({{count}})",
       "backups_select_but_newest": "全選除最新外",

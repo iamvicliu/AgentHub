@@ -270,7 +270,7 @@ describe('migration smoke (full path through getDB)', () => {
 
   it('old user (v0): full historical schema with capture+session data migrates and DB is functional', async () => {
     const spoolDir = makeTempDir('spool-smoke-v0-')
-    seedV0(join(spoolDir, 'spool.db'))
+    seedV0(join(spoolDir, 'agenthub.db'))
 
     const dbModule = await loadGetDB(spoolDir)
     const db = dbModule.getDB()
@@ -294,7 +294,7 @@ describe('migration smoke (full path through getDB)', () => {
 
   it('old user (v4 with starred session + capture): session pin survives, capture star dropped, DB functional', async () => {
     const spoolDir = makeTempDir('spool-smoke-v4-')
-    seedV4WithStars(join(spoolDir, 'spool.db'))
+    seedV4WithStars(join(spoolDir, 'agenthub.db'))
 
     const dbModule = await loadGetDB(spoolDir)
     const db = dbModule.getDB()
@@ -312,7 +312,7 @@ describe('migration smoke (full path through getDB)', () => {
 
   it('old user (v6 with starred session): star migrates to pin and DB is functional', async () => {
     const spoolDir = makeTempDir('spool-smoke-v6-')
-    seedV6(join(spoolDir, 'spool.db'))
+    seedV6(join(spoolDir, 'agenthub.db'))
 
     const dbModule = await loadGetDB(spoolDir)
     const db = dbModule.getDB()

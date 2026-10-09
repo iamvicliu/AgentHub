@@ -32,7 +32,7 @@ function makeTempDir(prefix: string): string {
 describe('migration v5 (connector subsystem removal)', () => {
   it('drops connector tables, narrows stars CHECK, deletes capture stars, preserves session stars', async () => {
     const spoolDir = makeTempDir('spool-v5-mig-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
 
     // ── Seed a v4 DB by hand ──────────────────────────────────────────────
     const seed = new Database(dbPath)

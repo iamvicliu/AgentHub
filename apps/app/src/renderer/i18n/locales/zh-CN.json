@@ -397,7 +397,7 @@
       "backups_label": "AgentHub 索引备份",
       "backups_sub": "数据库升级或回滚前保存的索引快照，可能包含旧会话原文。不是 Agent 原始记录的备份；删除后将失去对应恢复点。",
       "backups_loading": "加载中…",
-      "backups_empty": "~/.spool/backups/ 中没有备份。",
+      "backups_empty": "~/.agenthub/backups/ 中没有备份。",
       "backups_summary": "{{count}} 个文件 · 总计 {{size}}",
       "backups_select_auto": "选择自动备份 ({{count}})",
       "backups_select_but_newest": "全选除最新外",

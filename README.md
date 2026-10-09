@@ -1,14 +1,12 @@
 # AgentHub
 
-**把 Claude Code、Codex、Cursor 等 10 种 AI 编程 Agent 的本地会话汇到一处，统一搜索、阅读和管理。**
+**把 Claude Code、Codex、Cursor 等 10 种 AI Agent 的本地会话汇到一处，统一搜索、阅读和管理。**
 
-用了好几个 AI 编程工具以后，想找回“上周那次是怎么解决的”，往往得挨个翻各家的历史记录。AgentHub 把这些会话收进一个列表：一次搜索就能搜遍所有 Agent，打开就能顺畅地读完整段对话。
+用了好几个 AI 工具以后，想找回“上周那次是怎么解决的”，往往得挨个打开各个工具翻各家的历史记录。AgentHub 把这些会话收进一个列表：一次搜索就能搜遍所有 Agent，打开就能顺畅地读完整段对话。
 
 - **只读、不打扰**：读取各 Agent 写在本机的会话记录，不做 IDE、不管理 worktree，也不改你的代码。
 - **全部留在本机**：会话和索引都存在你的电脑上，不上传。
 - **macOS 桌面应用**（Apple Silicon），界面支持简体中文、繁體中文、English、日本語、한국어、Deutsch、Français。
-
-当前版本 **1.0.0**。
 
 ## 能做什么
 
@@ -16,17 +14,16 @@
 
 - 所有 Agent 的会话混在一个列表里，可以按 Agent 筛选，筛选按钮上直接显示每个 Agent 有多少会话。
 - 按最近、最早、消息最多或标题排序；常看的会话可以置顶。
-- 每行显示时间、消息条数（橙色加粗，长短会话一眼可分）、模型；WorkBuddy 换过账号时还会标出所属账号。
+- 每行显示最后活动时间、消息条数和模型。
 
 ### 搜索
 
 - 同时搜索标题和正文，命中的词会高亮。标题命中排在前面，也可以改成按时间排。
-- 按 `⌘K` 随时回到搜索框。
+- 按 `⌘K` 随时启动搜索。
 
 ### 阅读
 
-- 清楚区分“我”和 Agent 的消息，保留 Agent 调用了哪些工具。
-- 打开会话默认停在最新的消息。
+- 清楚区分“我”和 Agent 的消息。
 - **只看我的消息**：一键隐藏 Agent 的回复，快速回顾自己问过什么。
 - **消息目录**：列出你在这个会话里的每一次提问，点一下就跳过去；目录宽度可以拖动调整。
 - **会话内查找**：`⌘F` 查找，`⌘G` / `⌘⇧G` 跳到下一个 / 上一个；`⌘[` 返回列表，筛选和搜索都还在。
@@ -34,15 +31,15 @@
 
 ### 管理
 
-- **改名**：给会话起个好记的名字。Codex 和 Hermes 的会话改名会同步回原 Agent。
+- **改名**：给会话起个好记的名字。（Codex 和 Hermes 的会话改名会自动同步回原 Agent；其他 Agent 只改 AgentHub 里的名字）
 - **删除**：确认后把原始记录移进废纸篓，同时清理索引，误删了可以从废纸篓找回。
-- **在终端继续**：Claude Code、Codex、Gemini CLI、OpenCode、Pi 的会话可以一键在终端里接着聊。除 Gemini CLI 外都会另开一个分支，不影响原会话；Gemini CLI 不支持分支，会直接接着原会话写。终端可以自动识别，也可以自己指定，支持 Tern 和自定义终端。
+- **在终端继续**：Claude Code、Codex、Gemini CLI、OpenCode、Pi 的会话可以一键在终端里接着聊。终端工具可以自动识别，也可以自己指定。
 
 ### 自动同步
 
 - Agent 写入新内容后，大约 2 秒就会出现在 AgentHub 里，不需要手动刷新；底部状态栏会显示“正在更新列表…”。
 - 关掉窗口后 AgentHub 留在菜单栏继续同步；完全退出后，下次启动会自动补上这段时间的变化。
-- 点击左下角的同步状态，可以立即做一次完整同步。
+- 手动点击左下角的同步状态，可以立即做一次完整同步。
 
 ### 安全检查
 
@@ -60,36 +57,51 @@
 
 > Raycast 扩展需要另外安装，**稍后开源**。
 
-### 跳转链接
+### 第三方 App 对接
 
 `agenthub://session/...` 链接可以直接打开某个会话并高亮其中一条消息，方便从笔记、Raycast 等工具跳回来。
 
 ## 支持的 Agent
 
-| Agent            | 搜索和阅读 | 在终端继续 | 在 AgentHub 删除原始会话  | 改名同步回原 Agent |
-| ---------------- | ---------- | ---------- | ------------------------- | ------------------ |
-| Claude Code      | ✓          | ✓          | ✓（会话还在运行时会拒绝） | —                  |
-| Codex CLI        | ✓          | ✓          | ✓                         | ✓                  |
-| Cursor           | ✓          | —          | —                         | —                  |
-| DeepSeek Harness | ✓          | —          | —                         | —                  |
-| Gemini CLI       | ✓          | ✓          | ✓                         | —                  |
-| Hermes           | ✓          | —          | ✓（永久删除，不进废纸篓） | ✓                  |
-| OpenClaw         | ✓          | —          | —                         | —                  |
-| OpenCode         | ✓          | ✓          | —                         | —                  |
-| Pi               | ✓          | ✓          | ✓                         | —                  |
-| WorkBuddy        | ✓          | —          | ✓                         | —                  |
+| Agent            | 搜索和阅读 | 在终端继续 | 在 AgentHub 删除原始会话  | 改名同步回原 Agent | 用真实会话实测 |
+| ---------------- | ---------- | ---------- | ------------------------- | ------------------ | -------------- |
+| Claude Code      | ✓          | ✓          | ✓（会话还在运行时会拒绝） | —                  | ✓              |
+| Codex CLI        | ✓          | ✓          | ✓                         | ✓                  | ✓              |
+| Cursor           | ✓          | —          | —                         | —                  | ✓              |
+| DeepSeek Harness | ✓          | —          | —                         | —                  | ✓              |
+| Gemini CLI       | ✓          | ✓          | ✓                         | —                  | ⚠️ 未实测      |
+| Hermes           | ✓          | —          | ✓（永久删除，不进废纸篓） | ✓                  | ✓              |
+| OpenClaw         | ✓          | —          | —                         | —                  | ⚠️ 未实测      |
+| OpenCode         | ✓          | ✓          | —                         | —                  | ✓              |
+| Pi               | ✓          | ✓          | ✓                         | —                  | ⚠️ 未实测      |
+| WorkBuddy        | ✓          | —          | ✓                         | —                  | ✓              |
 
 - 不支持删除原始会话的 Agent，在 AgentHub 里点删除会先弹出说明，不会误删。
 - 各 Agent 在自己应用里**归档**的会话，AgentHub 也不显示（WorkBuddy、DeepSeek Harness、Cursor、Codex）。
-- Gemini CLI、OpenClaw、Pi 目前只用测试数据验证过，还没有用真实会话验证；遇到问题欢迎反馈。
+
+> ⚠️ **以下内容还没有用真实数据实测过**，只用测试数据验证了读取格式，可能有问题，遇到了欢迎[反馈](https://github.com/iamvicliu/agenthub/issues)：
+>
+> - **Gemini CLI、OpenClaw、Pi** 三个 Agent 的全部功能（搜索阅读、在终端继续、删除）。
+> - **OpenCode 和 Pi** 用 `agenthub://` 链接跳转到某条消息。
+> - Cursor 的命令行版（cursor-agent）的会话**不支持**，只支持 Cursor 编辑器里的对话。
 
 ## 安装
 
-目前还没有提供下载好的安装包，需要按下方“开发与打包”自行构建。本地构建的应用没有经过 Apple 公证。
+1. 到 [Releases](https://github.com/iamvicliu/agenthub/releases) 下载最新的 `AgentHub-版本号-arm64.dmg`（仅支持 Apple Silicon 芯片的 Mac）。
+2. 打开 DMG，把 AgentHub 拖进“应用程序”文件夹。
+3. 第一次打开时，macOS 会提示“无法验证开发者”或“已损坏，无法打开”。这是因为安装包**没有经过 Apple 公证**，不是文件真的坏了。任选一种方式放行：
+   - 打开“系统设置 → 隐私与安全性”，在页面下方找到 AgentHub，点“仍要打开”；
+   - 或者在“终端”里运行下面这行，然后重新打开：
+
+     ```bash
+     xattr -dr com.apple.quarantine /Applications/AgentHub.app
+     ```
+
+也可以按下方“开发与打包”自己构建。
 
 ## 数据与隐私
 
-- 所有数据都在本机：索引在 `~/.spool/`，会话原文仍由各 Agent 自己保存。
+- 所有数据都在本机：AgentHub 的索引和设置在 `~/.agenthub/`，会话原文仍由各 Agent 自己保存。
 - **改名**默认只改 AgentHub 里的名字，不动原 Agent 的记录（Codex、Hermes 例外，会同步回去）。
 - **删除**会删掉原始记录，不只是在 AgentHub 里隐藏。删除前请先关掉正在写这个会话的 Agent。
 - 某个 Agent 的数据目录暂时读不到时，AgentHub 不会清空它已有的索引。
@@ -129,10 +141,11 @@
 - DeepSeek Harness：压缩转写由多个 zstd 帧拼接而成，逐帧解压。
 - Cursor：读取的是 Cursor 编辑器的数据；cursor-agent 命令行版的 `~/.cursor/chats/*/store.db` 暂未接入。
 
-### 兼容说明
+### 数据位置与标识
 
-- 为了兼容已有的索引和设置，数据目录沿用 `~/.spool/`（开发模式为 `~/.spool-dev/`）和原有的应用配置目录。
-- 应用标识为 `com.vicliu.agenthub`，链接协议为 `agenthub://`（1.0.0 之前是 `spool://`）。链接格式见 [本地会话链接](docs/local-session-links.md)。
+- 索引数据库 `~/.agenthub/agenthub.db`，设置、日志、备份也在 `~/.agenthub/`；开发模式用 `~/.agenthub-dev/`，可用 `SPOOL_DATA_DIR` 指定。
+- 应用配置目录 `~/Library/Application Support/AgentHub`。
+- 应用标识 `com.vicliu.agenthub`，链接协议 `agenthub://`，链接格式见 [本地会话链接](docs/local-session-links.md)。
 
 ### 开发与打包
 

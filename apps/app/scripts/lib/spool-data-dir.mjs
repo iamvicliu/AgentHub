@@ -6,8 +6,8 @@ import { join } from 'node:path'
  * should run with. Pure — easy to test, no side effects.
  *
  *   - If the caller already has SPOOL_DATA_DIR set, respect it.
- *   - Otherwise default to ~/.spool-dev/ so dev never touches the user's
- *     real ~/.spool/.
+ *   - Otherwise default to ~/.agenthub-dev/ so dev never touches the user's
+ *     real ~/.agenthub/.
  *
  * Returns `{ value, source }` where `source` is:
  *   - 'env'      → caller already had it set; we did not change anything
@@ -17,5 +17,5 @@ export function resolveSpoolDataDir(env, home = homedir()) {
   if (env.SPOOL_DATA_DIR) {
     return { value: env.SPOOL_DATA_DIR, source: 'env' }
   }
-  return { value: join(home, '.spool-dev'), source: 'default' }
+  return { value: join(home, '.agenthub-dev'), source: 'default' }
 }

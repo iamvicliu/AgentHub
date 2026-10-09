@@ -374,7 +374,7 @@
       "backups_label": "SQLite backups",
       "backups_sub": "Snapshots AgentHub writes before destructive migrations or manual rollbacks. Pick which to delete.",
       "backups_loading": "Loading…",
-      "backups_empty": "No backups in ~/.spool/backups/.",
+      "backups_empty": "No backups in ~/.agenthub/backups/.",
       "backups_summary": "{{count}} files · {{size}} total",
       "backups_select_auto": "Select auto ({{count}})",
       "backups_select_but_newest": "Select all but newest",

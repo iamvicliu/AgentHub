@@ -73,7 +73,7 @@ function seedV7(dbPath: string): void {
 describe('migration v8 (title_source column)', () => {
   it('adds title_source column with default "derived" when upgrading from v7', async () => {
     const spoolDir = makeTempDir('spool-v8-mig-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
     seedV7(dbPath)
 
     vi.stubEnv('SPOOL_DATA_DIR', spoolDir)
@@ -99,7 +99,7 @@ describe('migration v8 (title_source column)', () => {
 
   it('is idempotent when column already exists at v8', async () => {
     const spoolDir = makeTempDir('spool-v8-idem-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
     seedV7(dbPath)
 
     // Pre-add the column and bump user_version, simulating a DB that ran an
@@ -130,7 +130,7 @@ describe('migration v8 (title_source column)', () => {
     // guard alone would skip the ALTER and leave the schema broken; the
     // unconditional schema-sanity check at the end of runMigrations repairs it.
     const spoolDir = makeTempDir('spool-v8-repair-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
     seedV7(dbPath)
     const seed = new Database(dbPath)
     seed.pragma('user_version = 8') // bump but don't add the column

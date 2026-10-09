@@ -8,10 +8,11 @@ import { runAgentSearchCleanup } from '../migrations/agent-search-cleanup.js'
 import { upgradeWorktreeIdentities } from '../migrations/worktree-identity-upgrade.js'
 import { realFs } from '../projects/fs.js'
 import { computeIdentity, type IdentityFs } from '../projects/identity.js'
+import { DB_FILE_NAME, DEFAULT_DATA_DIR } from './data-dir.js'
 import { openDatabase } from './native-binding.js'
 
-export const SPOOL_DIR = process.env['SPOOL_DATA_DIR'] ?? join(homedir(), '.spool')
-export const DB_PATH = join(SPOOL_DIR, 'spool.db')
+export const SPOOL_DIR = process.env['SPOOL_DATA_DIR'] ?? DEFAULT_DATA_DIR
+export const DB_PATH = join(SPOOL_DIR, DB_FILE_NAME)
 
 /**
  * Latest schema version the running build knows how to migrate to.

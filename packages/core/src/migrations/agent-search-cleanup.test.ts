@@ -378,7 +378,7 @@ function seedV8(dbPath: string): void {
 describe('v9 schema migration (end-to-end via runMigrations)', () => {
   it('migrates pre-#153 agent-search sessions and leaves real sessions alone', async () => {
     const spoolDir = makeTempDir('spool-v9-mig-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
     seedV8(dbPath)
 
     vi.stubEnv('SPOOL_DATA_DIR', spoolDir)
@@ -434,7 +434,7 @@ describe('v9 schema migration (end-to-end via runMigrations)', () => {
 
   it('writes a backup file before running on a non-empty DB', async () => {
     const spoolDir = makeTempDir('spool-v9-backup-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
     seedV8(dbPath)
 
     vi.stubEnv('SPOOL_DATA_DIR', spoolDir)

@@ -7,7 +7,7 @@ import { rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const dir = process.env.SPOOL_DATA_DIR ?? join(homedir(), '.spool-dev')
+const dir = process.env.SPOOL_DATA_DIR ?? join(homedir(), '.agenthub-dev')
 
 try {
   const s = await stat(dir)

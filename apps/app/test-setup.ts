@@ -1,9 +1,9 @@
 // Vitest setup file — runs before any test file imports.
 //
 // @spool-lab/core captures `SPOOL_DIR = process.env.SPOOL_DATA_DIR ??
-// ~/.spool` at module-load time. Without this setup, a top-level
+// ~/.agenthub` at module-load time. Without this setup, a top-level
 // `import { … } from '@spool-lab/core'` in a test file would cause
-// SPOOL_DIR to resolve to the real user home (~/.spool), and any
+// SPOOL_DIR to resolve to the real user home (~/.agenthub), and any
 // test that exercises securityPreferences / IPC would silently
 // read/write the user's production files.
 //

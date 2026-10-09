@@ -5,9 +5,9 @@ import { resolveSpoolDataDir } from './spool-data-dir.mjs'
 describe('resolveSpoolDataDir', () => {
   const home = '/Users/test'
 
-  test('defaults to ~/.spool-dev when SPOOL_DATA_DIR is unset', () => {
+  test('defaults to ~/.agenthub-dev when SPOOL_DATA_DIR is unset', () => {
     expect(resolveSpoolDataDir({}, home)).toEqual({
-      value: '/Users/test/.spool-dev',
+      value: '/Users/test/.agenthub-dev',
       source: 'default',
     })
   })
@@ -21,7 +21,7 @@ describe('resolveSpoolDataDir', () => {
 
   test('treats empty SPOOL_DATA_DIR as unset', () => {
     expect(resolveSpoolDataDir({ SPOOL_DATA_DIR: '' }, home)).toEqual({
-      value: '/Users/test/.spool-dev',
+      value: '/Users/test/.agenthub-dev',
       source: 'default',
     })
   })

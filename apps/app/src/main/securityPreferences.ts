@@ -1,6 +1,6 @@
 // Persisted Security-feature preferences.
 //
-// Stored in ~/.spool/security.json next to ui.json. Kept in its own
+// Stored in ~/.agenthub/security.json next to ui.json. Kept in its own
 // file (vs. piggybacking on ui.json) because the schema is feature-
 // scoped.
 //

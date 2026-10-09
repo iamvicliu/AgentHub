@@ -25,7 +25,7 @@ function makeTempDir(prefix: string): string {
 describe('migration v7 (stars → pins)', () => {
   it('migrates session stars to pins and drops the stars table', async () => {
     const spoolDir = makeTempDir('spool-v7-mig-')
-    const dbPath = join(spoolDir, 'spool.db')
+    const dbPath = join(spoolDir, 'agenthub.db')
 
     // Seed a v6 DB by hand (post-v5 schema with narrow stars CHECK + identity columns)
     const seed = new Database(dbPath)

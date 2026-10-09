@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Wrapper for `electron-vite dev` that isolates Spool's data directory.
 //
-// pnpm dev must NOT touch the user's real ~/.spool/. Electron's main
+// pnpm dev must NOT touch the user's real ~/.agenthub/. Electron's main
 // process bundle reads SPOOL_DATA_DIR from process.env at module load,
 // so the env var has to be set BEFORE Electron starts — i.e. here in
 // the launcher, not inside the bundled code. (A previous attempt with

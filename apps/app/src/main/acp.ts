@@ -32,6 +32,7 @@ import {
   getSourceId,
   insertSpoolAuthoredSession,
   wrapSpoolSystemPrelude,
+  SPOOL_DIR,
   type FragmentResult,
   type Message,
   type Session,
@@ -56,7 +57,7 @@ export interface ToolCallEvent {
   kind?: string | undefined
 }
 
-/** User-facing config stored in ~/.spool/agents.json */
+/** User-facing config stored in ~/.agenthub/agents.json */
 export interface AgentsConfig {
   customTerminals?: import('../shared/customTerminal.js').CustomTerminal[]
   /** Which agent to use by default in AI mode */
@@ -208,7 +209,7 @@ const BUILTIN_AGENT_CONFIGS: Record<string, AgentConfig> = {
 
 function spoolHomeDir(): string {
   const override = process.env['SPOOL_HOME']?.trim()
-  return override && override.length > 0 ? override : join(homedir(), '.spool')
+  return override && override.length > 0 ? override : SPOOL_DIR
 }
 
 const AGENTS_CONFIG_PATH = join(spoolHomeDir(), 'agents.json')
@@ -1059,7 +1060,7 @@ export class AcpManager {
     const systemBody = [
       "You have access to a local knowledge base called Spool that indexes the user's AI coding sessions (Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi).",
       '',
-      'The database is at ~/.spool/spool.db (SQLite with FTS5). You can query it directly with the `sqlite3` CLI.',
+      'The database is at ~/.agenthub/agenthub.db (SQLite with FTS5). You can query it directly with the `sqlite3` CLI.',
       '',
       '── Schema ──',
       '  sources(id, name TEXT, base_path TEXT)  -- "claude", "codex", "gemini", "opencode", or "pi"',
@@ -1070,10 +1071,10 @@ export class AcpManager {
       '',
       'Example queries:',
       '  # FTS search on agent sessions',
-      '  sqlite3 ~/.spool/spool.db "SELECT m.content_text, s.title, s.started_at, p.display_name FROM messages_fts f JOIN messages m ON m.id = f.rowid JOIN sessions s ON s.id = m.session_id JOIN projects p ON p.id = s.project_id WHERE messages_fts MATCH \'search terms\' ORDER BY rank LIMIT 10"',
+      '  sqlite3 ~/.agenthub/agenthub.db "SELECT m.content_text, s.title, s.started_at, p.display_name FROM messages_fts f JOIN messages m ON m.id = f.rowid JOIN sessions s ON s.id = m.session_id JOIN projects p ON p.id = s.project_id WHERE messages_fts MATCH \'search terms\' ORDER BY rank LIMIT 10"',
       '',
       '  # Recent sessions',
-      '  sqlite3 ~/.spool/spool.db "SELECT session_uuid, title, started_at, message_count FROM sessions ORDER BY started_at DESC LIMIT 20"',
+      '  sqlite3 ~/.agenthub/agenthub.db "SELECT session_uuid, title, started_at, message_count FROM sessions ORDER BY started_at DESC LIMIT 20"',
       '',
       'Important:',
       "- Interpret the user's intent and decide what to search. Don't just match their exact words.",

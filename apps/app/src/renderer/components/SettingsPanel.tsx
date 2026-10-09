@@ -420,7 +420,7 @@ function GeneralTab({
             <p className={`${settingsDescriptionClass} mt-1`}>{t('settings.data_database_help')}</p>
           </div>
           <span className="text-warm-faint dark:text-dark-muted font-mono text-[11px]">
-            ~/.spool/spool.db
+            ~/.agenthub/agenthub.db
           </span>
         </div>
       </Section>

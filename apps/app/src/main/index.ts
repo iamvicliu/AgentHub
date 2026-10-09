@@ -164,8 +164,7 @@ const customUserDataDir = process.env['SPOOL_ELECTRON_USER_DATA_DIR']?.trim()
 if (customUserDataDir) {
   app.setPath('userData', customUserDataDir)
 } else if (!isDevMode) {
-  // Keep the existing Chromium profile, local storage and settings after rebranding.
-  app.setPath('userData', join(app.getPath('appData'), 'Spool'))
+  app.setPath('userData', join(app.getPath('appData'), 'AgentHub'))
 }
 
 const { run: runWithObservability } = makeObservabilityRuntime(

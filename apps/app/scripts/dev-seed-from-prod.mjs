@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copy the user's real ~/.spool/ to the dev dir so dev mode has realistic
+// Copy the user's real ~/.agenthub/ to the dev dir so dev mode has realistic
 // data to test against. NOT automatic — opt in when you want it. Refuses
 // to overwrite if dev dir is non-empty unless --force.
 
@@ -7,8 +7,8 @@ import { access, cp, mkdir, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const src = join(homedir(), '.spool')
-const dst = process.env.SPOOL_DATA_DIR ?? join(homedir(), '.spool-dev')
+const src = join(homedir(), '.agenthub')
+const dst = process.env.SPOOL_DATA_DIR ?? join(homedir(), '.agenthub-dev')
 const force = process.argv.includes('--force')
 
 try {

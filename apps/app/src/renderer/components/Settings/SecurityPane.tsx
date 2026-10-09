@@ -801,7 +801,7 @@ function BackupsManager() {
       ) : backups.length === 0 ? (
         <p className="text-warm-faint dark:text-dark-muted mt-2 text-[11px]">
           {t('settings.security.backups_empty', {
-            defaultValue: 'No backups in ~/.spool/backups/.',
+            defaultValue: 'No backups in ~/.agenthub/backups/.',
           })}
         </p>
       ) : (
