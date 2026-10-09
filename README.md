@@ -133,7 +133,6 @@
 
 - 为了兼容已有的索引和设置，数据目录沿用 `~/.spool/`（开发模式为 `~/.spool-dev/`）和原有的应用配置目录。
 - 应用标识为 `com.vicliu.agenthub`，链接协议为 `agenthub://`（1.0.0 之前是 `spool://`）。链接格式见 [本地会话链接](docs/local-session-links.md)。
-- 完整更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ### 开发与打包
 
