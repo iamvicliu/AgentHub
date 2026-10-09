@@ -1,3 +1,5 @@
+[简体中文](README.md) · [English](README.en.md)
+
 # AgentHub
 
 **把 Claude Code、Codex、Cursor 等 10 种 AI Agent 的本地会话汇到一处，统一搜索、阅读和管理。**
