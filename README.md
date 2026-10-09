@@ -8,7 +8,7 @@
 
 - **只读、不打扰**：读取各 Agent 写在本机的会话记录，不做 IDE、不管理 worktree，也不改你的代码。
 - **全部留在本机**：会话和索引都存在你的电脑上，不上传。
-- **macOS 桌面应用**（Apple Silicon），界面支持简体中文、繁體中文、English、日本語、한국어、Deutsch、Français。
+- **macOS 桌面应用**（Apple Silicon 和 Intel），界面支持简体中文、繁體中文、English、日本語、한국어、Deutsch、Français。
 
 ## 能做什么
 
@@ -89,7 +89,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/iamvicliu/AgentHub/releases) 下载最新的 `AgentHub-版本号-arm64.dmg`（仅支持 Apple Silicon 芯片的 Mac）。
+1. 到 [Releases](https://github.com/iamvicliu/AgentHub/releases) 下载对应芯片的安装包：Apple Silicon 下载 `AgentHub-版本号-arm64.dmg`，Intel 下载 `AgentHub-版本号-x64.dmg`。
 2. 打开 DMG，把 AgentHub 拖进“应用程序”文件夹。
 3. 第一次打开时，macOS 会提示“无法验证开发者”或“已损坏，无法打开”。这是因为安装包**没有经过 Apple 公证**，不是文件真的坏了。任选一种方式放行：
    - 打开“系统设置 → 隐私与安全性”，在页面下方找到 AgentHub，点“仍要打开”；
@@ -161,7 +161,7 @@ pnpm exec vp test run apps/app/src packages/core/src packages/session-view/src -
 pnpm run package:mac
 ```
 
-- 目标平台为 macOS Apple Silicon。签名和公证需要你自己的开发者证书。
+- 目标平台为 macOS（Apple Silicon 与 Intel）。签名和公证需要你自己的开发者证书。
 - `better-sqlite3` 必须匹配运行时；切到 Electron 开发时运行 `pnpm run rebuild:native:electron`。
 - 不要使用上游的 `scripts/release.sh`：它面向上游的 npm 包发布，AgentHub 只发布桌面应用。
 

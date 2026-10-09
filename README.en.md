@@ -8,7 +8,7 @@ After juggling several AI tools, finding "how did I solve that last week" usuall
 
 - **Read-only, non-intrusive**: reads the session files your agents already write locally. It's not an IDE, doesn't manage worktrees, and never touches your code.
 - **Everything stays local**: sessions and the index live on your machine; nothing is uploaded.
-- **macOS desktop app** (Apple Silicon), with a UI in 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, and Français.
+- **macOS desktop app** (Apple Silicon and Intel), with a UI in 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, and Français.
 
 ## What it does
 
@@ -89,7 +89,7 @@ Pair AgentHub with its Raycast extension "AI会话搜索" to search every agent'
 
 ## Installation
 
-1. Download the latest `AgentHub-<version>-arm64.dmg` from [Releases](https://github.com/iamvicliu/AgentHub/releases) (Apple Silicon Macs only).
+1. From [Releases](https://github.com/iamvicliu/AgentHub/releases), download `AgentHub-<version>-arm64.dmg` for Apple Silicon, or `AgentHub-<version>-x64.dmg` for Intel Macs.
 2. Open the DMG and drag AgentHub into Applications.
 3. On first launch macOS will say "cannot verify the developer" or "damaged and can't be opened". This is because the package is **not Apple-notarized** — the file is not actually broken. Allow it either way:
    - Open "System Settings → Privacy & Security" and click "Open Anyway" for AgentHub;
@@ -161,7 +161,7 @@ pnpm exec vp test run apps/app/src packages/core/src packages/session-view/src -
 pnpm run package:mac
 ```
 
-- Target platform is macOS Apple Silicon. Signing and notarization require your own developer certificate.
+- Target platform is macOS (Apple Silicon and Intel). Signing and notarization require your own developer certificate.
 - `better-sqlite3` must match the runtime; run `pnpm run rebuild:native:electron` when switching to Electron development.
 - Don't use upstream's `scripts/release.sh`: it publishes the upstream npm packages; AgentHub only ships the desktop app.
 
