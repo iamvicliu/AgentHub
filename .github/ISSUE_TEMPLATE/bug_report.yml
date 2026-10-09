@@ -19,13 +19,13 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Open Spool
+        1. Open AgentHub
         2. Search for '...'
         3. See error
   - type: input
     id: version
     attributes:
-      label: Spool version
+      label: AgentHub version
       placeholder: e.g. 0.1.0
   - type: input
     id: macos
