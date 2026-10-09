@@ -7,10 +7,6 @@
     "url": "https://github.com/spool-lab/spool/issues"
   },
   "license": "MIT",
-  "author": {
-    "name": "xinyao",
-    "email": "hi@xinyao.me"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/spool-lab/spool.git"
