@@ -1,4 +1,5 @@
 import { SENSITIVE_KIND_LABEL, type SensitiveKind } from '@spool-lab/redact'
+import type { TFunction } from 'i18next'
 
 export function compactModel(model: string | null | undefined): string {
   if (!model) return ''
@@ -12,8 +13,9 @@ export function compactModel(model: string | null | undefined): string {
   return name
 }
 
-export function friendlyMaskName(kind: string): string {
-  return SENSITIVE_KIND_LABEL[kind as SensitiveKind] ?? kind
+export function friendlyMaskName(kind: string, t?: TFunction): string {
+  const fallback = SENSITIVE_KIND_LABEL[kind as SensitiveKind] ?? kind
+  return t ? t(`security.kinds.${kind}`, { defaultValue: fallback }) : fallback
 }
 
 /** SI / decimal base (1000) — matches what users see in macOS Finder,

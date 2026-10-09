@@ -4,3 +4,6 @@
 
 /** True only in e2e builds (SPOOL_E2E_TEST=1) — see electron.vite.config.ts. */
 declare const __SPOOL_E2E__: boolean
+
+/** The app version from apps/app/package.json, for the About page. */
+declare const __AGENTHUB_VERSION__: string

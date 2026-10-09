@@ -103,7 +103,7 @@ describe('OpenCode parser', () => {
       makeOpenCodeSessionFilePath(dbPath, 'ses_abc123'),
     ])
     expect(getOpenCodeSessionIndexedMtime(makeOpenCodeSessionFilePath(dbPath, 'ses_abc123'))).toBe(
-      '1779152404000::opencode-v3-session-model-json',
+      '1779152404000::opencode-v4-message-model-agent',
     )
   })
 
@@ -120,7 +120,7 @@ describe('OpenCode parser', () => {
       makeOpenCodeSessionFilePath(dbPath, 'ses_abc123'),
     ])
     expect(getOpenCodeSessionIndexedMtime(makeOpenCodeSessionFilePath(dbPath, 'ses_abc123'))).toBe(
-      '1779152410000::opencode-v3-session-model-json',
+      '1779152410000::opencode-v4-message-model-agent',
     )
 
     const childPath = makeOpenCodeSessionFilePath(dbPath, 'ses_child_explore')
@@ -321,32 +321,50 @@ describe('OpenCode parser', () => {
     expect(parseOpenCodeSession(missing)).toBeNull()
   })
 
-  it('derives the model from the session JSON, falling back for partial / non-JSON values', () => {
-    const cases: Array<{ id: string; rawModel: string; expected: string }> = [
+  it('derives the model from message data, now that OpenCode moved it off the session row', () => {
+    const cases: Array<{ id: string; data: Record<string, unknown>; expected: string }> = [
       {
-        id: 'ses_model_full',
-        rawModel: '{"id":"big-pickle","providerID":"opencode"}',
+        id: 'ses_msg_model_full',
+        data: { role: 'user', model: { providerID: 'opencode', modelID: 'big-pickle' } },
         expected: 'opencode/big-pickle',
       },
-      { id: 'ses_model_no_provider', rawModel: '{"id":"big-pickle"}', expected: 'big-pickle' },
-      { id: 'ses_model_malformed', rawModel: '{not json', expected: '{not json' },
-      { id: 'ses_model_plain', rawModel: 'opencode/gpt-5.4', expected: 'opencode/gpt-5.4' },
+      {
+        id: 'ses_msg_model_flat',
+        data: { role: 'user', providerID: 'opencode', modelID: 'gpt-5.4' },
+        expected: 'opencode/gpt-5.4',
+      },
+      {
+        id: 'ses_msg_model_id_only',
+        data: { role: 'user', model: { modelID: 'big-pickle' } },
+        expected: 'big-pickle',
+      },
+      { id: 'ses_msg_model_missing', data: { role: 'user' }, expected: '' },
     ]
     const { db, dbPath } = createOpenCodeDb()
     try {
       const start = Date.UTC(2026, 4, 19, 1, 0, 6)
       for (const c of cases) {
+        // No model/agent columns: the real OpenCode schema dropped them, and
+        // keeping them here is what let the schema drift go unnoticed.
         db.prepare(`
-          INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated, model, agent)
-          VALUES (?, 'proj_1', ?, '/work/api', ?, '1.0.0', ?, ?, ?, 'build')
-        `).run(c.id, c.id, c.id, start, start + 1000, c.rawModel)
-        insertTextMessage(db, {
-          sessionId: c.id,
-          messageId: `${c.id}_m`,
-          role: 'user',
-          text: 'hi',
-          at: start + 500,
-        })
+          INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated)
+          VALUES (?, 'proj_1', ?, '/work/api', ?, '1.0.0', ?, ?)
+        `).run(c.id, c.id, c.id, start, start + 1000)
+        db.prepare(`
+          INSERT INTO message (id, session_id, time_created, time_updated, data)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(`${c.id}_m`, c.id, start + 500, start + 500, JSON.stringify(c.data))
+        db.prepare(`
+          INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          `${c.id}_m_text`,
+          `${c.id}_m`,
+          c.id,
+          start + 500,
+          start + 500,
+          JSON.stringify({ type: 'text', text: 'hi' }),
+        )
       }
     } finally {
       db.close()
@@ -402,9 +420,7 @@ function createOpenCodeDb(): { db: Database.Database; dbPath: string } {
       share_url text,
       time_created integer NOT NULL,
       time_updated integer NOT NULL,
-      time_archived integer,
-      model text,
-      agent text
+      time_archived integer
     );
 
     CREATE TABLE message (
@@ -434,8 +450,8 @@ function seedOpenCodeSession(db: Database.Database): void {
     VALUES ('proj_1', '/work/api', ?, ?, '[]')
   `).run(start, start)
   db.prepare(`
-    INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated, model, agent)
-    VALUES ('ses_abc123', 'proj_1', 'fix-auth-callback', '/work/api', 'Fix the auth callback', '1.0.0', ?, ?, '{"id":"gpt-5.4","providerID":"opencode","variant":"default"}', 'build')
+    INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated)
+    VALUES ('ses_abc123', 'proj_1', 'fix-auth-callback', '/work/api', 'Fix the auth callback', '1.0.0', ?, ?)
   `).run(start, start + 4000)
 
   db.prepare(`
@@ -445,7 +461,12 @@ function seedOpenCodeSession(db: Database.Database): void {
     'msg_user',
     start + 1000,
     start + 1000,
-    JSON.stringify({ role: 'user', path: { cwd: '/work/api' } }),
+    JSON.stringify({
+      role: 'user',
+      agent: 'build',
+      model: { providerID: 'opencode', modelID: 'gpt-5.4' },
+      path: { cwd: '/work/api' },
+    }),
   )
   db.prepare(`
     INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
@@ -495,17 +516,9 @@ function insertBareSession(
 ): void {
   const start = Date.UTC(2026, 4, 19, 1, 0, 6)
   db.prepare(`
-    INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated, model, agent)
-    VALUES (?, 'proj_1', ?, ?, '/work/api', ?, '1.0.0', ?, ?, 'opencode/gpt-5.4', ?)
-  `).run(
-    opts.id,
-    opts.parentId ?? null,
-    opts.id,
-    opts.title ?? opts.id,
-    start,
-    start + 4000,
-    opts.agent ?? 'build',
-  )
+    INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated)
+    VALUES (?, 'proj_1', ?, ?, '/work/api', ?, '1.0.0', ?, ?)
+  `).run(opts.id, opts.parentId ?? null, opts.id, opts.title ?? opts.id, start, start + 4000)
 }
 
 function insertTextMessage(
@@ -532,14 +545,19 @@ function insertTextMessage(
 function seedOpenCodeSubagent(db: Database.Database): void {
   const start = Date.UTC(2026, 4, 19, 1, 0, 6)
   db.prepare(`
-    INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated, model, agent)
-    VALUES ('ses_child_explore', 'proj_1', 'ses_abc123', 'explore-auth-routes', '/work/api', 'Explore auth routes', '1.0.0', ?, ?, 'opencode/gpt-5.4', 'explore')
+    INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated)
+    VALUES ('ses_child_explore', 'proj_1', 'ses_abc123', 'explore-auth-routes', '/work/api', 'Explore auth routes', '1.0.0', ?, ?)
   `).run(start, start + 4000)
 
   db.prepare(`
     INSERT INTO message (id, session_id, time_created, time_updated, data)
     VALUES (?, 'ses_child_explore', ?, ?, ?)
-  `).run('msg_child_user', start + 1000, start + 1000, JSON.stringify({ role: 'user' }))
+  `).run(
+    'msg_child_user',
+    start + 1000,
+    start + 1000,
+    JSON.stringify({ role: 'user', agent: 'explore' }),
+  )
   db.prepare(`
     INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
     VALUES (?, ?, 'ses_child_explore', ?, ?, ?)

@@ -32,7 +32,7 @@ export default function Menu({ trigger, items, align = 'right', testId }: Props)
     const trig = triggerRef.current
     if (!trig) return
     const trigRect = trig.getBoundingClientRect()
-    const menuHeight = menuRef.current?.getBoundingClientRect().height ?? items.length * 30 + 4
+    const menuHeight = menuRef.current?.getBoundingClientRect().height ?? items.length * 40 + 4
     const margin = 8
     const spaceBelow = window.innerHeight - trigRect.bottom
     const openAbove = spaceBelow < menuHeight + margin && trigRect.top > menuHeight + margin
@@ -119,7 +119,7 @@ export default function Menu({ trigger, items, align = 'right', testId }: Props)
                     item.onSelect()
                     setOpen(false)
                   }}
-                  className={`group flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                  className={`group flex min-h-10 w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${
                     item.active
                       ? 'text-accent dark:text-accent-dark bg-accent/10 dark:bg-accent-dark/10'
                       : 'text-warm-text dark:text-dark-text hover:bg-warm-surface2 dark:hover:bg-dark-surface2'

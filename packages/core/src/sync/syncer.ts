@@ -1,6 +1,6 @@
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 
 import type Database from 'better-sqlite3'
 
@@ -19,7 +19,17 @@ import {
 } from '../db/queries.js'
 import { loadClaudeSession, decodeProjectSlug } from '../parsers/claude.js'
 import { loadCodexSession, CODEX_INDEX_VERSION } from '../parsers/codex.js'
+import { CURSOR_INDEX_VERSION, cursorStateMtime, loadCursorSession } from '../parsers/cursor.js'
+import { loadDshSession, DSH_INDEX_VERSION, dshArchiveMtime } from '../parsers/dsh.js'
 import { loadGeminiSession } from '../parsers/gemini.js'
+import {
+  isLocalAgentDatabase,
+  listLocalAgentSessions,
+  loadLocalAgentSession,
+  localAgentMtime,
+  localAgentDatabasePath,
+  LOCAL_AGENT_INDEX_VERSION,
+} from '../parsers/local-agents.js'
 import {
   getOpenCodeSessionIndexedMtime,
   isOpenCodeDatabaseFile,
@@ -29,10 +39,16 @@ import {
   parseOpenCodeSessionFilePath,
 } from '../parsers/opencode.js'
 import { decodePiSessionDirSlug, loadPiSession, PI_INDEX_VERSION } from '../parsers/pi.js'
+import {
+  loadWorkBuddySession,
+  WORKBUDDY_INDEX_VERSION,
+  workBuddyArchiveMtime,
+} from '../parsers/workbuddy.js'
 import { realFs } from '../projects/fs.js'
 import { computeIdentity } from '../projects/identity.js'
 import type { SessionSource } from '../types.js'
 import type { ParsedMessage, SyncResult } from '../types.js'
+import { loadCodexThreadCatalog, type CodexThreadCatalog } from './codex-threads.js'
 import { getSessionRoots, isSessionFileForSource } from './source-paths.js'
 
 export interface SyncProgressEvent {
@@ -68,6 +84,10 @@ export class Syncer {
   private onProgress: SyncEventCallback | undefined
   private onSessionChanged: SessionChangedCallback | undefined
   private codexTitleIndex: Map<string, string> = new Map()
+  private codexCatalog: CodexThreadCatalog | null = null
+  /** Catalog-listed threads already tried by applyCodexCatalog; file changes re-sync them anyway. */
+  private codexCatalogAttempted = new Set<string>()
+  private codexSessionFiles: string[] = []
 
   constructor(
     db: Database.Database,
@@ -82,21 +102,44 @@ export class Syncer {
   syncAll(): SyncResult {
     const seenPaths = new Set<string>()
     const files: Array<{ path: string; source: SessionSource }> = []
+    let discoveryErrors = 0
 
-    for (const source of ['claude', 'codex', 'gemini', 'opencode', 'pi'] as const) {
+    for (const source of [
+      'claude',
+      'codex',
+      'gemini',
+      'opencode',
+      'pi',
+      'hermes',
+      'openclaw',
+      'workbuddy',
+      'dsh',
+      'cursor',
+    ] as const) {
       for (const dir of getSessionRoots(source)) {
         try {
           addUniqueFiles(files, seenPaths, collectSessionFiles(dir, source))
-        } catch {
-          /* dir may not exist */
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+            discoveryErrors++
+            console.warn('[sync] source discovery failed:', source, code ?? 'invalid source data')
+          }
         }
       }
     }
 
     cleanupStaleOpenCodeSessions(this.db, files)
+    this.cleanupMissingSessions()
+    this.cleanupLocalAgentSessions()
 
     const knownMtimes = getAllSessionMtimes(this.db)
+    this.codexSessionFiles = files
+      .filter((file) => file.source === 'codex')
+      .map((file) => file.path)
     this.codexTitleIndex = loadCodexSessionIndex()
+    this.codexCatalog = loadCodexThreadCatalog()
+    this.codexCatalogAttempted.clear()
 
     const pendingFiles = files.flatMap((f) => {
       const existing = knownMtimes.get(f.path)
@@ -127,7 +170,7 @@ export class Syncer {
 
     let added = 0
     let updated = 0
-    let errors = 0
+    let errors = discoveryErrors
 
     try {
       const BATCH = 20
@@ -146,7 +189,7 @@ export class Syncer {
         })
       }
 
-      this.applyCodexTitles()
+      this.applyCodexCatalog(false)
     } finally {
       if (isBulk) {
         this.onProgress?.({ phase: 'indexing', count: 0, total: 0 })
@@ -173,6 +216,101 @@ export class Syncer {
 
     this.onProgress?.({ phase: 'done', count: pendingFiles.length, total: pendingFiles.length })
     return { added, updated, errors }
+  }
+
+  /** Reconcile only confirmed missing local transcripts, never an unavailable root. */
+  private cleanupLocalAgentSessions(): void {
+    for (const source of ['hermes', 'openclaw'] as const) {
+      const rows = this.db
+        .prepare(
+          'SELECT s.file_path AS path, s.session_uuid AS uuid FROM sessions s JOIN sources src ON src.id = s.source_id WHERE src.name = ?',
+        )
+        .all(source) as { path: string; uuid: string }[]
+      const roots = getSessionRoots(source)
+      for (const path of new Set(
+        rows
+          .filter((row) => row.path.includes('#local-session='))
+          .map((row) => localAgentDatabasePath(row.path)),
+      )) {
+        if (!roots.some((root) => isSessionFileForSource(source, path, root))) continue
+        let live: Set<string>
+        try {
+          live = new Set(listLocalAgentSessions(path, source))
+        } catch {
+          continue
+        }
+        this.db.transaction(() => {
+          for (const row of rows)
+            if (localAgentDatabasePath(row.path) === path && !live.has(row.path)) {
+              deleteSessionByFilePath(this.db, row.path)
+              this.db.prepare('DELETE FROM pins WHERE session_uuid = ?').run(row.uuid)
+            }
+        })()
+      }
+    }
+  }
+
+  /** Reconcile only confirmed missing local transcripts, never an unavailable root. */
+  cleanupMissingSessions(): number {
+    let removed = 0
+    for (const source of [
+      'claude',
+      'codex',
+      'pi',
+      'hermes',
+      'openclaw',
+      'workbuddy',
+      'dsh',
+      'cursor',
+    ] as const) {
+      const readableRoots = getSessionRoots(source).filter((root) => {
+        try {
+          readdirSync(root)
+          return true
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code !== 'ENOENT' && code !== 'ENOTDIR')
+            console.warn('[sync] cannot read source root:', root, code)
+          return false
+        }
+      })
+      const rows = this.db
+        .prepare(`
+        SELECT s.file_path AS path, s.session_uuid AS uuid
+        FROM sessions s JOIN sources so ON so.id = s.source_id WHERE so.name = ?
+      `)
+        .all(source) as Array<{ path: string; uuid: string }>
+      const missing = rows.filter((row) => {
+        if (row.path.includes('#local-session=')) return false
+        if (!readableRoots.some((root) => isSessionFileForSource(source, row.path, root)))
+          return false
+        try {
+          statSync(row.path)
+          return false
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code
+          if (code === 'ENOENT') return true
+          console.warn('[sync] cannot check transcript:', row.path, code)
+          return false
+        }
+      })
+      this.db.transaction(() => {
+        for (const row of missing) {
+          // Recheck after scanning in case a rename/recreation finished meanwhile.
+          try {
+            statSync(row.path)
+            continue
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') continue
+          }
+          if (deleteSessionByFilePath(this.db, row.path)) {
+            this.db.prepare('DELETE FROM pins WHERE session_uuid = ?').run(row.uuid)
+            removed++
+          }
+        }
+      })()
+    }
+    return removed
   }
 
   /** Decide whether a re-sync of `sessionUuid` against `parsed` is a
@@ -242,7 +380,7 @@ export class Syncer {
   /** True if the title we'd write differs from what's currently stored
    *  for this session. Lets the syncer skip the session_search rebuild
    *  on no-op mtime touches without losing title-only updates (e.g.
-   *  codex's auto-titling pass via applyCodexTitles, or a claude
+   *  codex's auto-titling pass via applyCodexCatalog, or a claude
    *  custom-title record landing while everything else stays the
    *  same). */
   private titleDiffersFromStored(sessionId: number, nextTitle: string): boolean {
@@ -252,17 +390,68 @@ export class Syncer {
     return (row?.title ?? '') !== nextTitle
   }
 
-  private applyCodexTitles(): void {
-    if (this.codexTitleIndex.size === 0) return
-    const stmt = this.db.prepare(
-      `UPDATE sessions SET title = ?
-         WHERE session_uuid = ? AND title != ? AND title_source = 'derived'`,
+  private dropIndexedSession(uuid: string): boolean {
+    return this.db.transaction(() => {
+      this.db.prepare('DELETE FROM pins WHERE session_uuid = ?').run(uuid)
+      return this.db.prepare('DELETE FROM sessions WHERE session_uuid = ?').run(uuid).changes > 0
+    })()
+  }
+
+  /**
+   * Re-read Codex's thread catalog and title index and reconcile the index with them: drop
+   * threads the Codex app no longer lists, index threads it lists again (e.g. unarchived), and
+   * take Codex's title. Codex titles always follow Codex, since AgentHub renames write through.
+   * Returns how many sessions changed.
+   */
+  applyCodexCatalog(reload = true): number {
+    if (reload) {
+      this.codexTitleIndex = loadCodexSessionIndex()
+      this.codexCatalog = loadCodexThreadCatalog()
+    }
+    const catalog = this.codexCatalog
+    const rows = this.db
+      .prepare(
+        "SELECT s.id, s.session_uuid AS uuid, s.title, s.title_source AS titleSource FROM sessions s JOIN sources so ON so.id = s.source_id WHERE so.name = 'codex'",
+      )
+      .all() as { id: number; uuid: string; title: string | null; titleSource: string }[]
+    let changed = 0
+    const indexed = new Set<string>()
+    const retitle = this.db.prepare(
+      "UPDATE sessions SET title = ?, title_source = 'derived' WHERE id = ?",
     )
     this.db.transaction(() => {
-      for (const [uuid, title] of this.codexTitleIndex) {
-        stmt.run(title, uuid, title)
+      for (const row of rows) {
+        indexed.add(row.uuid)
+        const thread = catalog?.get(row.uuid)
+        if (thread && !thread.visible) {
+          if (this.dropIndexedSession(row.uuid)) changed++
+          continue
+        }
+        const title = thread?.name ?? this.codexTitleIndex.get(row.uuid)
+        if (!title) continue
+        if (row.title === title && row.titleSource === 'derived') continue
+        retitle.run(title, row.id)
+        refreshSessionSearchFromMessages(this.db, row.id)
+        if (row.title !== title) changed++
       }
     })()
+    if (catalog && reload) {
+      const missing = [...catalog]
+        .filter(
+          ([id, thread]) =>
+            thread.visible && !indexed.has(id) && !this.codexCatalogAttempted.has(id),
+        )
+        .map(([id]) => id)
+      for (const id of missing) {
+        this.codexCatalogAttempted.add(id)
+        const file = this.codexSessionFiles.find((path) => path.includes(id))
+        if (!file) continue
+        // An empty mtime map makes it a fresh add that still merges the thread's segment files.
+        const result = this.syncFile(file, 'codex', new Map())
+        if (result === 'added' || result === 'updated') changed++
+      }
+    }
+    return changed
   }
 
   syncFile(
@@ -274,8 +463,30 @@ export class Syncer {
   ): 'added' | 'updated' | 'skipped' | 'error' {
     const force = options?.forceMode
     try {
+      // Watcher/refresh calls do not pass through syncAll's title-index load.
+      if (source === 'codex' && !knownMtimes) {
+        this.codexTitleIndex = loadCodexSessionIndex()
+        this.codexCatalog = loadCodexThreadCatalog()
+      }
       if (source === 'opencode' && isOpenCodeDatabaseFile(filePath)) {
         return this.syncOpenCodeDatabase(filePath, knownMtimes, options)
+      }
+      if (
+        (source === 'hermes' || source === 'openclaw') &&
+        isLocalAgentDatabase(filePath) &&
+        !filePath.includes('#local-session=')
+      ) {
+        const results = listLocalAgentSessions(filePath, source).map((path) =>
+          this.syncFile(path, source, knownMtimes, undefined, options),
+        )
+        if (!results.includes('error')) this.cleanupLocalAgentSessions()
+        return results.includes('error')
+          ? 'error'
+          : results.includes('added')
+            ? 'added'
+            : results.includes('updated')
+              ? 'updated'
+              : 'skipped'
       }
 
       const mtime = precomputedMtime ?? getIndexedMtime(filePath, source)
@@ -304,12 +515,20 @@ export class Syncer {
         source === 'claude'
           ? loadClaudeSession(filePath)
           : source === 'codex'
-            ? loadCodexSession(filePath)
+            ? loadCodexSession(filePath, knownMtimes ? this.codexSessionFiles : undefined)
             : source === 'gemini'
               ? loadGeminiSession(filePath)
-              : source === 'pi'
-                ? loadPiSession(filePath)
-                : loadOpenCodeSession(filePath)
+              : source === 'hermes' || source === 'openclaw'
+                ? loadLocalAgentSession(filePath, source)
+                : source === 'pi'
+                  ? loadPiSession(filePath)
+                  : source === 'workbuddy'
+                    ? loadWorkBuddySession(filePath)
+                    : source === 'dsh'
+                      ? loadDshSession(filePath)
+                      : source === 'cursor'
+                        ? loadCursorSession(filePath)
+                        : loadOpenCodeSession(filePath)
 
       if (parseResult.kind !== 'parsed') {
         // The "filtered" path normally removes a session whose source
@@ -335,7 +554,12 @@ export class Syncer {
       const parsed = parseResult.session
 
       if (source === 'codex') {
-        const codexTitle = this.codexTitleIndex.get(parsed.sessionUuid)
+        const thread = this.codexCatalog?.get(parsed.sessionUuid)
+        // Keep the list identical to the Codex app: hidden threads (archived, subagent, exec…)
+        // are not indexed, and a row that became hidden is dropped.
+        if (thread && !thread.visible)
+          return this.dropIndexedSession(parsed.sessionUuid) ? 'updated' : 'skipped'
+        const codexTitle = thread?.name ?? this.codexTitleIndex.get(parsed.sessionUuid)
         if (codexTitle) parsed.title = codexTitle
       }
 
@@ -399,6 +623,7 @@ export class Syncer {
             hasToolUse,
             cwd: parsed.cwd,
             model: parsed.model,
+            ...(parsed.account ? { account: parsed.account } : {}),
             rawFileMtime: mtime,
           },
           mode,
@@ -583,7 +808,20 @@ function getMtime(filePath: string): string {
 }
 
 function getIndexedMtime(filePath: string, source: SessionSource): string {
+  if (source === 'hermes' || source === 'openclaw')
+    return `${localAgentMtime(filePath)}::${LOCAL_AGENT_INDEX_VERSION}`
   if (source === 'opencode') return getOpenCodeSessionIndexedMtime(filePath)
+  // WorkBuddy and dsh record archiving outside the transcript, so the file's own
+  // mtime cannot signal that a hidden session became visible (or the reverse).
+  // Folding the archive store's revision into the indexed mtime makes any
+  // archive or unarchive re-index the source on the next scan.
+  if (source === 'workbuddy')
+    return `${getMtime(filePath)}::${workBuddyArchiveMtime(filePath)}::${WORKBUDDY_INDEX_VERSION}`
+  if (source === 'dsh')
+    return `${getMtime(filePath)}::${dshArchiveMtime(filePath)}::${DSH_INDEX_VERSION}`
+  // Cursor keeps titles and archiving in its own state store, beside the editor.
+  if (source === 'cursor')
+    return `${getMtime(filePath)}::${cursorStateMtime()}::${CURSOR_INDEX_VERSION}`
   return `${getMtime(filePath)}::${getIndexVersion(source)}`
 }
 
@@ -594,6 +832,10 @@ function getIndexVersion(source: SessionSource): string {
   if (source === 'gemini') return 'gemini-v2-session-search-fts'
   if (source === 'opencode') return OPENCODE_INDEX_VERSION
   if (source === 'pi') return PI_INDEX_VERSION
+  if (source === 'hermes' || source === 'openclaw') return LOCAL_AGENT_INDEX_VERSION
+  if (source === 'workbuddy') return WORKBUDDY_INDEX_VERSION
+  if (source === 'dsh') return DSH_INDEX_VERSION
+  if (source === 'cursor') return CURSOR_INDEX_VERSION
   return 'claude-v3-session-search-fts'
 }
 
@@ -609,6 +851,12 @@ function collectSessionFiles(
 
   const results: Array<{ path: string; source: SessionSource }> = []
   walkDir(dir, dir, results, source)
+  if (source === 'hermes' || source === 'openclaw')
+    return results.flatMap((file) =>
+      isLocalAgentDatabase(file.path)
+        ? listLocalAgentSessions(file.path, source).map((path) => ({ path, source }))
+        : [file],
+    )
   return results
 }
 
@@ -627,11 +875,20 @@ function walkDir(
   for (const entry of entries) {
     const fullPath = join(dir, entry.name)
     if (entry.isDirectory()) {
+      if (source === 'hermes' && (dir !== root || entry.name !== 'sessions')) continue
+      if (source === 'openclaw' && dir !== root && !['agent', 'sessions'].includes(entry.name))
+        continue
       if (source === 'gemini' && !shouldTraverseGeminiDir(dir, fullPath, entry.name)) continue
       // For claude and pi, session files only live at <root>/<slug>/<uuid>.jsonl.
       // Anything deeper is subagent / future-nested scratch data that hijacks the
       // parent sessionId — see isSessionFileForSource for the matching read-side check.
       if ((source === 'claude' || source === 'pi') && dirname(fullPath) !== root) continue
+      // Cursor: only <root>/<slug>/agent-transcripts/<id>/ holds transcripts;
+      // its other folders (assets, canvases, mcps, …) are not worth walking.
+      if (source === 'cursor') {
+        const depth = relative(root, fullPath).split(sep).length
+        if (depth > 3 || (depth === 2 && entry.name !== 'agent-transcripts')) continue
+      }
       walkDir(fullPath, root, results, source)
     } else if (entry.isFile() && isSessionFileForSource(source, fullPath, root)) {
       results.push({ path: fullPath, source })
@@ -648,8 +905,20 @@ function shouldTraverseGeminiDir(parentDir: string, fullPath: string, entryName:
 
 function loadCodexSessionIndex(): Map<string, string> {
   const titles = new Map<string, string>()
-  try {
-    const raw = readFileSync(join(homedir(), '.codex', 'session_index.jsonl'), 'utf8')
+  for (const root of getSessionRoots('codex')) {
+    const path = join(dirname(root), 'session_index.jsonl')
+    let raw: string
+    try {
+      raw = readFileSync(path, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        console.warn(
+          '[sync] cannot read Codex title index:',
+          path,
+          (error as NodeJS.ErrnoException).code,
+        )
+      continue
+    }
     for (const line of raw.split('\n')) {
       if (!line.trim()) continue
       try {
@@ -659,8 +928,6 @@ function loadCodexSessionIndex(): Map<string, string> {
         /* skip malformed lines */
       }
     }
-  } catch {
-    /* file may not exist */
   }
   return titles
 }
@@ -701,6 +968,16 @@ function resolveProject(
     const displayName = parts[parts.length - 1] ?? 'pi'
     const slug = displayPath.replace(/^\//, '').replace(/\//g, '-') || 'default'
     return { slug, displayPath, displayName }
+  }
+
+  if (source === 'cursor' && !cwd) {
+    // <root>/<workspace-slug>/agent-transcripts/<id>/<id>.jsonl (or the older
+    // <id>.jsonl beside it). With no folder open Cursor names the workspace
+    // "empty-window"; that slug is still the best grouping available.
+    const parts = filePath.split('/')
+    const at = parts.lastIndexOf('agent-transcripts')
+    const slug = (at > 0 ? parts[at - 1] : undefined) || 'cursor'
+    return { slug, displayPath: slug, displayName: slug }
   }
 
   const projectIdentifier = dirname(filePath).split('/').at(-2) ?? 'gemini'

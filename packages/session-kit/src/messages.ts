@@ -451,6 +451,8 @@ export function parseCodexSessionLines(
 ): ParseProviderResult {
   const eventMessages: ParsedMessage[] = []
   const responseMessages: ParsedMessage[] = []
+  let responseAssistantCount = 0
+  let responseUserCount = 0
   let sessionUuid = ''
   let cwd = ''
   let model = ''
@@ -466,10 +468,7 @@ export function parseCodexSessionLines(
   // which has no overlap with the trailing UUID-`-`-separator, so the
   // engine matches in O(n) with no backtracking. Codex hasn't changed
   // its rollout filename format since the parser was written.
-  const fileMatch = baseName(filePath).match(
-    /^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
-  )
-  if (fileMatch?.[1]) sessionUuid = fileMatch[1]
+  sessionUuid = codexRolloutSessionUuid(filePath) ?? ''
 
   for (const line of lines) {
     if (line.trim().length === 0) continue
@@ -541,23 +540,33 @@ export function parseCodexSessionLines(
 
     if (type === 'response_item' && payload) {
       const role = payload['role'] as string | undefined
-      if (role === 'assistant') {
+      if (role === 'assistant' || role === 'user') {
         const content = payload['content']
         if (Array.isArray(content)) {
-          const text = (content as Array<{ type?: string; text?: string }>)
-            .filter((c) => c.type === 'output_text' || c.type === 'text')
-            .map((c) => c.text ?? '')
+          const items = content as Array<{ type?: string; text?: string }>
+          let text = items
+            .filter((c) => c.type === 'output_text' || c.type === 'input_text' || c.type === 'text')
+            .map((c) => (role === 'user' ? codexUserText(c.text ?? '') : (c.text ?? '')))
+            .filter(Boolean)
             .join('\n')
             .trim()
+          if (role === 'user') {
+            text = stripSpoolSystemPrelude(text)
+            if (!text && items.some((item) => item.type === 'input_image' || item.type === 'image'))
+              text = '[Image]'
+          }
           if (looksLikeInternalCodexAssessment(text)) {
             isInternalAssessmentSession = true
             continue
           }
           if (text) {
             responseMessages.push({
-              uuid: `codex-${sessionUuid}-ri-${responseMessages.length}`,
+              uuid:
+                role === 'assistant'
+                  ? `codex-${sessionUuid}-ri-${responseAssistantCount++}`
+                  : `codex-${sessionUuid}-riu-${responseUserCount++}`,
               parentUuid: null,
-              role: 'assistant',
+              role,
               contentText: text,
               timestamp,
               isSidechain: false,
@@ -571,21 +580,7 @@ export function parseCodexSessionLines(
     }
   }
 
-  // Strategy: use event_msg for UI (concise); supplement with response_items for
-  // FTS richness when event_msgs are sparse. We index both but deduplicate.
-  //
-  // If we have event_msgs, use them as the primary message list.
-  // response_items are added as system-level messages for FTS indexing only.
-  let messages: ParsedMessage[]
-  if (eventMessages.length > 0) {
-    messages = [...eventMessages]
-    // Add response_items as sidechain messages for FTS richness
-    for (const rm of responseMessages) {
-      messages.push({ ...rm, isSidechain: true, seq: messages.length })
-    }
-  } else {
-    messages = responseMessages
-  }
+  let messages = mergeCodexMessages(eventMessages, responseMessages)
 
   if (isInternalAssessmentSession) return { kind: 'filtered' }
   if (messages.length === 0) return { kind: 'skipped' }
@@ -616,7 +611,52 @@ export function parseCodexSessionLines(
   }
 }
 
+function codexUserText(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('# AGENTS.md instructions') && trimmed.includes('</INSTRUCTIONS>'))
+    return ''
+  for (const tag of ['environment_context', 'external_codex_apps_open_page']) {
+    if (trimmed.startsWith(`<${tag}>`) && trimmed.endsWith(`</${tag}>`)) return ''
+  }
+  const requestMarker = '## My request:'
+  if (trimmed.startsWith('# Files mentioned by the user:') && trimmed.includes(requestMarker))
+    return trimmed.slice(trimmed.indexOf(requestMarker) + requestMarker.length).trim()
+  return trimmed
+}
+
+const CODEX_MIRROR_WINDOW_MS = 2000
+
+function mergeCodexMessages(events: ParsedMessage[], responses: ParsedMessage[]): ParsedMessage[] {
+  const mirrors = new Map<string, ParsedMessage[]>()
+  const key = (message: ParsedMessage) => JSON.stringify([message.role, message.contentText])
+  for (const event of events) {
+    const candidates = mirrors.get(key(event)) ?? []
+    candidates.push(event)
+    mirrors.set(key(event), candidates)
+  }
+  const messages = [...events]
+  for (const response of responses) {
+    const candidates = mirrors.get(key(response))
+    const mirror =
+      candidates?.findIndex(
+        (event) =>
+          Math.abs(Date.parse(event.timestamp) - Date.parse(response.timestamp)) <=
+          CODEX_MIRROR_WINDOW_MS,
+      ) ?? -1
+    // Consume one mirror only: repeated real requests remain separate turns.
+    if (mirror >= 0) candidates!.splice(mirror, 1)
+    else messages.push(response)
+  }
+  return messages.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+}
+
 /** Browser-safe basename — enough for the rollout filename match. */
+export function codexRolloutSessionUuid(path: string): string | undefined {
+  return baseName(path).match(
+    /^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\.jsonl(?:\.zst)?$/,
+  )?.[1]
+}
+
 function baseName(path: string): string {
   const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
   return idx === -1 ? path : path.slice(idx + 1)

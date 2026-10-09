@@ -32,6 +32,8 @@ import type {
 import type { SensitiveKind } from '@spool-lab/redact'
 import { contextBridge, ipcRenderer } from 'electron'
 
+import type { SessionLinkResult } from '../shared/sessionLink.js'
+
 export interface SecurityPreferences {
   kindAllowlist: SensitiveKind[]
   infoDefaultVisible: boolean
@@ -98,6 +100,7 @@ export type LanguagePreference = 'system' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'k
 export type RuntimePlatform = NodeJS.Platform
 
 export interface AgentsConfig {
+  customTerminals?: import('../shared/customTerminal.js').CustomTerminal[]
   defaultAgent?: string
   defaultSearchSort?: SearchSortOrder
   terminal?: string
@@ -124,6 +127,26 @@ export interface AgentsConfig {
 export type SpoolAPI = typeof api
 
 const api = {
+  renameSession: (
+    uuid: string,
+    title: string,
+  ): Promise<{ ok: true; title: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('spool:rename-session', { uuid, title }),
+  deleteSession: (uuid: string): Promise<{ deleted: boolean }> =>
+    ipcRenderer.invoke('spool:delete-session', { uuid }),
+  onOpenSettings: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('spool:open-settings', handler)
+    return () => ipcRenderer.removeListener('spool:open-settings', handler)
+  },
+  onOpenSessionLink: (callback: (raw: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, raw: string) => callback(raw)
+    ipcRenderer.on('spool:open-session-link', handler)
+    return () => ipcRenderer.removeListener('spool:open-session-link', handler)
+  },
+  sessionLinksReady: (): Promise<void> => ipcRenderer.invoke('spool:session-links-ready'),
+  resolveSessionLink: (raw: string): Promise<SessionLinkResult> =>
+    ipcRenderer.invoke('spool:resolve-session-link', raw),
   platform: process.platform as RuntimePlatform,
 
   search: (
@@ -138,7 +161,7 @@ const api = {
   searchPreview: (query: string, limit?: number, source?: string): Promise<SearchResult[]> =>
     ipcRenderer.invoke('spool:search-preview', { query, limit, source }),
 
-  listSessions: (options?: { limit?: number; cursor?: SessionsCursor }): Promise<SessionsPage> =>
+  listSessions: (options?: ListSessionsByIdentityOptions): Promise<SessionsPage> =>
     ipcRenderer.invoke('spool:list-sessions', options ?? {}),
 
   listProjectGroups: (): Promise<ProjectGroup[]> => ipcRenderer.invoke('spool:list-project-groups'),
@@ -223,6 +246,10 @@ const api = {
     ipcRenderer.invoke('spool:ai-builtin-agents'),
 
   getAgentsConfig: (): Promise<AgentsConfig> => ipcRenderer.invoke('spool:ai-get-config'),
+  discoverTerminals: (): Promise<{ name: string; installed: boolean }[]> =>
+    ipcRenderer.invoke('spool:terminals-discover'),
+  pickTerminal: (): Promise<string | null> => ipcRenderer.invoke('spool:terminal-pick'),
+  testTerminal: (): Promise<void> => ipcRenderer.invoke('spool:terminal-test'),
 
   setAgentsConfig: (config: AgentsConfig): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('spool:ai-set-config', { config }),
@@ -450,7 +477,7 @@ export interface ShareAuthUser {
 const spoolShare = {
   authAvailable: (): Promise<boolean> => ipcRenderer.invoke('share-auth:available'),
   // Single sign-in path: WorkOS AuthKit via the system browser (PKCE +
-  // spool:// callback). Method choice (Google, email, ...) happens on
+  // agenthub:// callback). Method choice (Google, email, ...) happens on
   // the hosted AuthKit page, not here.
   signIn: (): Promise<ShareAuthUser> => ipcRenderer.invoke('share-auth:signin'),
   me: (): Promise<ShareAuthUser | null> => ipcRenderer.invoke('share-auth:me'),

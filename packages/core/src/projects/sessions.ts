@@ -68,18 +68,33 @@ export function listSessionsByIdentity(
 
 export function listRecentSessionsPage(
   db: Database.Database,
-  options: { limit?: number; cursor?: SessionsCursor; search?: string } = {},
+  options: ListSessionsByIdentityOptions = {},
 ): SessionsPage {
-  const { limit = DEFAULT_PAGE_SIZE, cursor, search } = options
+  const {
+    limit = DEFAULT_PAGE_SIZE,
+    cursor,
+    search,
+    sources,
+    sortOrder = 'recent',
+    excludePinned,
+  } = options
   const conditions: string[] = ['s.message_count > 0']
   const params: unknown[] = []
+  if (sources?.length) {
+    conditions.push(`src.name IN (${sources.map(() => '?').join(',')})`)
+    params.push(...sources)
+  }
+  if (excludePinned) {
+    conditions.push('NOT EXISTS (SELECT 1 FROM pins WHERE pins.session_uuid = s.session_uuid)')
+  }
   appendSessionSearchCondition(conditions, params, search)
   if (cursor) {
-    const c = cursorWhere('recent', cursor)
+    const c = cursorWhere(sortOrder, cursor)
+    c.sql = c.sql.replaceAll('s.started_at', "COALESCE(NULLIF(s.ended_at, ''), s.started_at)")
     conditions.push(c.sql)
     params.push(...c.params)
   }
-  return executePage(db, conditions, params, 'recent', limit)
+  return executePage(db, conditions, params, sortOrder, limit, true)
 }
 
 function appendSessionSearchCondition(
@@ -171,11 +186,18 @@ function executePage(
   params: unknown[],
   sortOrder: ProjectSessionSortOrder,
   limit: number,
+  useActivity = false,
 ): SessionsPage {
+  const order = useActivity
+    ? orderByClause(sortOrder).replaceAll(
+        's.started_at',
+        "COALESCE(NULLIF(s.ended_at, ''), s.started_at)",
+      )
+    : orderByClause(sortOrder)
   const sql = `
     ${SESSION_SELECT}
     WHERE ${conditions.join(' AND ')}
-    ORDER BY ${orderByClause(sortOrder)}
+    ORDER BY ${order}
     LIMIT ?
   `
   // Fetch limit+1 so we can detect "more rows exist" without a count query.
@@ -187,7 +209,7 @@ function executePage(
   const nextCursor =
     hasMore && last
       ? {
-          startedAt: last.startedAt,
+          startedAt: useActivity ? last.endedAt || last.startedAt : last.startedAt,
           sessionUuid: last.sessionUuid,
           messageCount: last.messageCount,
           title: last.title ?? '',

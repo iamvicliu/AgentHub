@@ -1,25 +1,68 @@
-import { closeSync, openSync, readSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, readSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 
-import { parseCodexSessionLines } from '@spool-lab/session-kit'
+import { parseCodexSessionLines, codexRolloutSessionUuid } from '@spool-lab/session-kit'
 
+import { getSessionRoots, isSessionFileForSource } from '../sync/source-paths.js'
 import type { ParseSessionResult, ParsedSession } from '../types.js'
+import { decompressZstdFrames } from './dsh.js'
 
 // The parsing brain lives in @spool-lab/session-kit (browser-safe, shared
 // with the web reader); this wrapper owns only the streamed file I/O.
 
-export const CODEX_INDEX_VERSION = 'codex-v6-project-identity-from-session-git-remote'
+export const CODEX_INDEX_VERSION = 'codex-v8-desktop-user-messages-and-segments'
 
 const READ_CHUNK_SIZE = 1024 * 1024
 
-export function loadCodexSession(filePath: string): ParseSessionResult {
-  const result = parseCodexSessionLines(readNonEmptyLines(filePath), filePath)
+export function loadCodexSession(
+  filePath: string,
+  knownFiles?: readonly string[],
+): ParseSessionResult {
+  const paths = codexSessionSegments(filePath, knownFiles)
+  function* lines() {
+    for (const path of paths) yield* readNonEmptyLines(path)
+  }
+  const result = parseCodexSessionLines(lines(), filePath)
   if (result.kind !== 'parsed') return result
-  const gitRemote = loadCodexSessionGitRemote(filePath)
+  const gitRemote = paths.map(loadCodexSessionGitRemote).find(Boolean)
   return gitRemote ? { kind: 'parsed', session: { ...result.session, gitRemote } } : result
 }
 
+function codexSessionSegments(filePath: string, knownFiles?: readonly string[]): string[] {
+  const uuid = codexRolloutSessionUuid(filePath)
+  const root = getSessionRoots('codex').find((candidate) =>
+    isSessionFileForSource('codex', filePath, candidate),
+  )
+  if (!uuid || !root) return [filePath]
+  const files: string[] = []
+  function walk(directory: string) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.isFile() && codexRolloutSessionUuid(path) === uuid) files.push(path)
+    }
+  }
+  if (knownFiles)
+    files.push(
+      ...knownFiles.filter(
+        (path) =>
+          codexRolloutSessionUuid(path) === uuid && isSessionFileForSource('codex', path, root),
+      ),
+    )
+  else walk(root)
+  // Full sync supplies its file inventory; watcher reads discover newly created segments.
+  return [...new Set([...files, filePath])].sort((a, b) => a.localeCompare(b))
+}
+
 function* readNonEmptyLines(filePath: string): Iterable<string> {
+  // Codex packs older rollouts into rollout-….jsonl.zst and removes the
+  // .jsonl. Those are closed sessions, so inflating one whole is fine.
+  if (filePath.endsWith('.zst')) {
+    for (const line of decompressZstdFrames(readFileSync(filePath)).toString('utf8').split('\n'))
+      if (line.trim().length > 0) yield line
+    return
+  }
   const fd = openSync(filePath, 'r')
   const buffer = Buffer.allocUnsafe(READ_CHUNK_SIZE)
   const decoder = new StringDecoder('utf8')

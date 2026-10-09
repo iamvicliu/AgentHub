@@ -8,6 +8,7 @@ import {
   SquarePen,
   AlertTriangle,
   Check,
+  Trash2,
 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
@@ -20,6 +21,7 @@ import { SourceBadge } from './Badges.js'
 import Menu from './Menu.js'
 import PinButton from './PinButton.js'
 import { compactModel } from './security/format.js'
+import { requestSessionManagement } from './SessionManagement.js'
 
 type Props = {
   session: Session
@@ -50,8 +52,12 @@ export default function SessionRow({
 
   const looseT = t as unknown as (k: string, o?: Record<string, unknown>) => string
   const title = session.title?.trim() || t('common.noTitle')
-  const date = formatRelativeDate(session.startedAt, { ...(bucket ? { bucket } : {}), t: looseT })
+  const date = formatRelativeDate(session.endedAt || session.startedAt, {
+    ...(bucket ? { bucket } : {}),
+    t: looseT,
+  })
   const model = compactModel(session.model)
+  const account = compactAccount(session.account)
 
   function handleOpen() {
     onOpenSession(session.sessionUuid)
@@ -84,6 +90,7 @@ export default function SessionRow({
       tabIndex={0}
       onClick={handleOpen}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           handleOpen()
@@ -100,12 +107,32 @@ export default function SessionRow({
         <p className="truncate">
           {showProject && (
             <>
-              <span>{session.projectDisplayName}</span>
+              <span title={session.cwd ?? session.projectDisplayPath}>
+                {session.cwd ?? session.projectDisplayPath}
+              </span>
               {' · '}
             </>
           )}
-          {date} · {t('session.msgs_other', { count: session.messageCount })}
+          {date} ·{' '}
+          {/* The count is what tells a long session from a short one at a
+              glance, so it alone steps up from the muted meta line: 12px
+              semibold in the amber accent. line-height stays 16px so the row
+              keeps its fixed virtual-list height. */}
+          <span
+            data-testid="session-message-count"
+            className="text-accent dark:text-accent-dark text-xs leading-4 font-semibold"
+          >
+            {t('session.msgs_other', { count: session.messageCount })}
+          </span>
           {model && ` · ${model}`}
+          {account && (
+            <>
+              {' · '}
+              {/* Only present when the provider holds several accounts, so the
+                  row always says which one a session came from. */}
+              <span title={session.account ?? undefined}>{account}</span>
+            </>
+          )}
         </p>
       }
       trailing={
@@ -124,11 +151,38 @@ export default function SessionRow({
               onChange={(next) => onPinChange?.(session.sessionUuid, next)}
             />
           </span>
+          <span className="flex items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            {(['rename', 'delete'] as const).map((action) => (
+              <IconButton
+                key={action}
+                className="!h-10 !w-10"
+                data-testid={`row-${action}`}
+                aria-label={t(`session.${action}`)}
+                title={t(`session.${action}`)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  requestSessionManagement({
+                    uuid: session.sessionUuid,
+                    source: session.source,
+                    title,
+                    action,
+                  })
+                }
+              >
+                {action === 'rename' ? (
+                  <SquarePen size={13} strokeWidth={1.6} aria-hidden />
+                ) : (
+                  <Trash2 size={13} strokeWidth={1.6} aria-hidden />
+                )}
+              </IconButton>
+            ))}
+          </span>
           <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-has-[[aria-expanded=true]]:opacity-100">
             <Menu
               align="right"
               trigger={({ open, toggle }) => (
                 <IconButton
+                  className="!h-10 !w-10"
                   aria-label={t('common.moreActions')}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={toggle}
@@ -148,18 +202,29 @@ export default function SessionRow({
                       },
                     ]
                   : []),
-                {
-                  label: resuming ? t('common.openingTerminal') : t('session.resume_inTerminal'),
-                  icon: resuming ? (
-                    <Loader2 size={14} strokeWidth={1.6} className="animate-spin" aria-hidden />
-                  ) : (
-                    <SquareTerminal size={14} strokeWidth={1.6} aria-hidden />
-                  ),
-                  onSelect: () => {
-                    void handleResume()
-                  },
-                  disabled: resuming,
-                },
+                ...(resumeCommand
+                  ? [
+                      {
+                        label: resuming
+                          ? t('common.openingTerminal')
+                          : t('session.resume_inTerminal'),
+                        icon: resuming ? (
+                          <Loader2
+                            size={14}
+                            strokeWidth={1.6}
+                            className="animate-spin"
+                            aria-hidden
+                          />
+                        ) : (
+                          <SquareTerminal size={14} strokeWidth={1.6} aria-hidden />
+                        ),
+                        onSelect: () => {
+                          void handleResume()
+                        },
+                        disabled: resuming,
+                      },
+                    ]
+                  : []),
                 ...(resumeCommand
                   ? [
                       {
@@ -270,4 +335,15 @@ function SecurityBadge({ session }: { session: Session }): React.ReactElement | 
       <AlertTriangle size={13} strokeWidth={1.7} aria-hidden />
     </span>
   )
+}
+
+/** Account label for the row's meta line.
+ *
+ *  WorkBuddy only sets `account` when the store holds more than one account, so
+ *  the row never shows a label that says nothing. The label is the last item on
+ *  the meta line, which truncates with an ellipsis itself, so the full name shows
+ *  whenever the window has room and is cut only when it doesn't; the tooltip
+ *  always carries the full value. */
+function compactAccount(account: string | null): string | null {
+  return account?.trim() || null
 }

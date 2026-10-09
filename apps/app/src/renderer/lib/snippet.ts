@@ -16,6 +16,30 @@ export function snippetToStrongHtml(snippet: string): string {
     .join('')
 }
 
+export function highlightTitleHtml(title: string, query: string): string {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .map((term) => term.replace(/^"|"$/g, ''))
+    .filter(Boolean)
+  if (!terms.length) return escapeHtml(title)
+  const pattern = new RegExp(
+    terms
+      .sort((a, b) => b.length - a.length)
+      .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|'),
+    'gi',
+  )
+  let offset = 0
+  let html = ''
+  for (const match of title.matchAll(pattern)) {
+    html +=
+      escapeHtml(title.slice(offset, match.index)) + `<strong>${escapeHtml(match[0])}</strong>`
+    offset = match.index + match[0].length
+  }
+  return html + escapeHtml(title.slice(offset))
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

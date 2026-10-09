@@ -22,7 +22,7 @@
 // confirm, no trash icon, hidden until hover.
 
 import type { AllowlistEntryRow } from '@spool-lab/core'
-import { SENSITIVE_KIND_LABEL, type SensitiveKind } from '@spool-lab/redact'
+import type { SensitiveKind } from '@spool-lab/redact'
 import type { TFunction } from 'i18next'
 import { X, Search, ChevronDown } from 'lucide-react'
 import { useEffect, useMemo, useState, type ComponentProps } from 'react'
@@ -32,6 +32,7 @@ import { securityApi } from '../../api/security.js'
 import { useHotkeys } from '../../hooks/useHotkeys.js'
 import Menu from '../Menu.js'
 import { filterIgnoredEntries } from './filter-ignored.js'
+import { friendlyMaskName } from './format.js'
 import { formatScanAgo } from './page-helpers.js'
 import { truncateValue } from './truncate-value.js'
 
@@ -69,18 +70,21 @@ export default function AllowlistManageModal({ onClose }: Props) {
     if (!entries) return [] as Array<{ kind: string; label: string }>
     const seen = new Map<string, string>()
     for (const e of entries) {
-      if (!seen.has(e.kind))
-        seen.set(e.kind, SENSITIVE_KIND_LABEL[e.kind as SensitiveKind] ?? e.kind)
+      if (!seen.has(e.kind)) seen.set(e.kind, friendlyMaskName(e.kind, t))
     }
     return [...seen.entries()]
       .map(([kind, label]) => ({ kind, label }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [entries])
+  }, [entries, t])
 
   const visible = useMemo(() => {
     if (!entries) return []
-    return filterIgnoredEntries(entries, { scope: scopeFilter, kind: kindFilter, query: filter })
-  }, [entries, filter, kindFilter, scopeFilter])
+    return filterIgnoredEntries(
+      entries,
+      { scope: scopeFilter, kind: kindFilter, query: filter },
+      (kind) => friendlyMaskName(kind, t),
+    )
+  }, [entries, filter, kindFilter, scopeFilter, t])
 
   async function stopIgnoring(entry: AllowlistEntryRow) {
     const key = rowKey(entry)
@@ -176,7 +180,7 @@ export default function AllowlistManageModal({ onClose }: Props) {
               testId="ignored-kind-menu"
               label={
                 kindFilter
-                  ? (SENSITIVE_KIND_LABEL[kindFilter as SensitiveKind] ?? kindFilter)
+                  ? friendlyMaskName(kindFilter, t)
                   : t('settings.security.allowlist_all_types', { defaultValue: 'All types' })
               }
               items={[
@@ -258,7 +262,7 @@ interface RowProps {
 }
 function IgnoredRow({ entry, isConfirming, isBusy, onStopIgnoring }: RowProps) {
   const { t } = useTranslation()
-  const kindLabel = SENSITIVE_KIND_LABEL[entry.kind as SensitiveKind] ?? entry.kind
+  const kindLabel = friendlyMaskName(entry.kind, t)
   const hasValue = entry.value !== null && entry.value !== undefined
   const kindOrUnavailable = hasValue
     ? kindLabel

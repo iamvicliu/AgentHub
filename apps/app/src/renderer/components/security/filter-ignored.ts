@@ -10,15 +10,18 @@ export type ScopeFilter = 'all' | 'global' | 'session'
 export function filterIgnoredEntries(
   entries: AllowlistEntryRow[],
   opts: { scope: ScopeFilter; kind: string | null; query: string },
+  labelForKind: (kind: string) => string = (kind) =>
+    SENSITIVE_KIND_LABEL[kind as SensitiveKind] ?? kind,
 ): AllowlistEntryRow[] {
   const q = opts.query.trim().toLowerCase()
   const match = (e: AllowlistEntryRow): boolean => {
     if (opts.scope !== 'all' && e.scope !== opts.scope) return false
     if (opts.kind !== null && e.kind !== opts.kind) return false
     if (!q) return true
-    const kindLabel = (SENSITIVE_KIND_LABEL[e.kind as SensitiveKind] ?? e.kind).toLowerCase()
+    const kindLabel = labelForKind(e.kind).toLowerCase()
     return (
       kindLabel.includes(q) ||
+      e.kind.toLowerCase().includes(q) ||
       (e.value ?? '').toLowerCase().includes(q) ||
       (e.sessionTitle ?? '').toLowerCase().includes(q)
     )

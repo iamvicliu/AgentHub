@@ -22,6 +22,8 @@
   --sp-source-gemini: #5887d0;
   --sp-source-opencode: #8a6f3d;
   --sp-source-pi: #a55a7a;
+  --sp-source-hermes: #b58a36;
+  --sp-source-openclaw: #ab675b;
   --sp-success: #6baf6b;
   --sp-warning: #e4a640;
   --sp-error: #c95a4f;
@@ -86,6 +88,8 @@ html[data-theme='dark'] {
   --sp-source-gemini: #8ab0e5;
   --sp-source-opencode: #c9a761;
   --sp-source-pi: #d88aaa;
+  --sp-source-hermes: #d9b86a;
+  --sp-source-openclaw: #d59c90;
   --sp-success: #7dc07d;
   --sp-warning: #f0b854;
   --sp-error: #d67259;

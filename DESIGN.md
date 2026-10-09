@@ -129,6 +129,8 @@ Only currently-supported agent sources are listed. Add a row when a new source s
 | Gemini      | `#5887D0` | `#8AB0E5` |
 | OpenCode    | `#8A6F3D` | `#C9A761` |
 | Pi          | `#A55A7A` | `#D88AAA` |
+| Hermes      | `#B58A36` | `#D9B86A` |
+| OpenClaw    | `#AB675B` | `#D59C90` |
 
 ### Semantic States
 

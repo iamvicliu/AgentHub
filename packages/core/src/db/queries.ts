@@ -185,6 +185,9 @@ export function upsertSession(
     hasToolUse: boolean
     cwd: string
     model: string
+    /** Which provider account the session belongs to; omitted for providers
+     *  that keep only one. */
+    account?: string
     rawFileMtime: string
   },
   mode: UpsertSessionMode = 'rewrite',
@@ -218,14 +221,20 @@ export function upsertSession(
     // IGNORE-driven dedupe (claude tool-use shadow records would
     // otherwise inflate the parser-derived value back to pre-v14
     // levels on every sync).
+    //
+    // `project_id` follows the latest resolution as well, so a session whose
+    // project grouping was improved (e.g. a parser now finds the workspace)
+    // moves with a re-index instead of staying under its first-sync project.
     db.prepare(`
       UPDATE sessions SET
+        project_id = ?,
         title = CASE WHEN title_source = 'derived' THEN ? ELSE title END,
         file_path = ?,
         started_at = ?, ended_at = ?,
-        has_tool_use = ?, cwd = ?, model = ?, raw_file_mtime = ?
+        has_tool_use = ?, cwd = ?, model = ?, account = ?, raw_file_mtime = ?
       WHERE id = ?
     `).run(
+      opts.projectId,
       opts.title,
       opts.filePath,
       opts.startedAt,
@@ -233,6 +242,7 @@ export function upsertSession(
       opts.hasToolUse ? 1 : 0,
       opts.cwd,
       opts.model,
+      opts.account ?? null,
       opts.rawFileMtime,
       existing.id,
     )
@@ -243,8 +253,8 @@ export function upsertSession(
     .prepare(`
     INSERT INTO sessions
       (project_id, source_id, session_uuid, file_path, title,
-       started_at, ended_at, message_count, has_tool_use, cwd, model, raw_file_mtime)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       started_at, ended_at, message_count, has_tool_use, cwd, model, account, raw_file_mtime)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
     .run(
       opts.projectId,
@@ -258,6 +268,7 @@ export function upsertSession(
       opts.hasToolUse ? 1 : 0,
       opts.cwd,
       opts.model,
+      opts.account ?? null,
       opts.rawFileMtime,
     )
 
@@ -434,6 +445,7 @@ export const SESSION_SELECT = `
     s.title, s.started_at AS startedAt, s.ended_at AS endedAt,
     s.message_count AS messageCount, s.has_tool_use AS hasToolUse,
     s.cwd, s.model,
+    s.account,
     s.scan_finding_count AS scanFindingCount,
     s.scan_high_count    AS scanHighCount,
     s.scan_purged_count  AS scanPurgedCount,
@@ -448,6 +460,7 @@ export const SESSION_SELECT = `
 export function getSessionWithMessages(
   db: Database.Database,
   sessionUuid: string,
+  options: { includeInternal?: boolean } = {},
 ): { session: Session; messages: Message[] } | null {
   const sessionRow = db
     .prepare(`
@@ -466,7 +479,7 @@ export function getSessionWithMessages(
            timestamp, is_sidechain AS isSidechain, tool_names AS toolNames, seq
     FROM messages
     WHERE session_id = ?
-      AND (is_sidechain = 0 OR parent_uuid LIKE 'opencode-subagent:%')
+      ${options.includeInternal ? '' : "AND (is_sidechain = 0 OR parent_uuid LIKE 'opencode-subagent:%')"}
     ORDER BY seq
   `)
     .all(session.id) as Array<Record<string, unknown>>
@@ -513,14 +526,11 @@ export function searchFragments(
   }
 
   if (naturalTerms.length === 1) {
-    return searchFragmentSessionFallback(
-      db,
-      naturalTerms,
-      naturalPhrase,
-      rowLimit,
-      'fts',
-      sharedOpts,
-    ).slice(0, limit)
+    return rankSearchFragments(
+      searchFragmentSessionFallback(db, naturalTerms, naturalPhrase, rowLimit, 'fts', sharedOpts),
+      query,
+      limit,
+    )
   }
 
   const groups = buildSearchPlan(query).map((step) => {
@@ -544,7 +554,30 @@ export function searchFragments(
     return collapseFragmentRows(rows, step.matchType)
   })
 
-  return mergeFragmentGroups(groups, limit)
+  return rankSearchFragments(mergeFragmentGroups(groups, rowLimit * groups.length), query, limit)
+}
+
+function rankSearchFragments(
+  results: FragmentResult[],
+  query: string,
+  limit: number,
+): FragmentResult[] {
+  const terms = getNaturalSearchTerms(query).map((term) => term.toLocaleLowerCase())
+  const titleMatches = (result: FragmentResult) =>
+    terms.length > 0 &&
+    terms.every((term) => result.sessionTitle.toLocaleLowerCase().includes(term))
+  return results
+    .sort((a, b) => {
+      const location = Number(titleMatches(b)) - Number(titleMatches(a))
+      if (location !== 0) return location
+      const timeA = Date.parse(a.messageTimestamp)
+      const timeB = Date.parse(b.messageTimestamp)
+      return (
+        (Number.isNaN(timeB) ? 0 : timeB) - (Number.isNaN(timeA) ? 0 : timeA) || a.rank - b.rank
+      )
+    })
+    .slice(0, limit)
+    .map((result, index) => ({ ...result, rank: index + 1 }))
 }
 
 export function searchSessionPreview(
@@ -1305,6 +1338,11 @@ export function getStatus(db: Database.Database): StatusInfo {
     geminiSessions: geminiRow?.cnt ?? 0,
     opencodeSessions: opencodeRow?.cnt ?? 0,
     piSessions: piRow?.cnt ?? 0,
+    hermesSessions: counts.find((r) => r.name === 'hermes')?.cnt ?? 0,
+    openclawSessions: counts.find((r) => r.name === 'openclaw')?.cnt ?? 0,
+    workbuddySessions: counts.find((r) => r.name === 'workbuddy')?.cnt ?? 0,
+    dshSessions: counts.find((r) => r.name === 'dsh')?.cnt ?? 0,
+    cursorSessions: counts.find((r) => r.name === 'cursor')?.cnt ?? 0,
     lastSyncedAt: lastSync?.last ?? null,
     dbSizeBytes: getDBSize(),
   }
@@ -1324,6 +1362,7 @@ export function rowToSession(r: Record<string, unknown>): Session {
     hasToolUse: Boolean(r['hasToolUse']),
     cwd: r['cwd'] as string | null,
     model: r['model'] as string | null,
+    account: (r['account'] as string | null) ?? null,
     source: r['source'] as SessionSource,
     projectDisplayPath: r['projectDisplayPath'] as string,
     projectDisplayName: r['projectDisplayName'] as string,

@@ -6,7 +6,7 @@ import './styles.css'
 // Initialize i18next before any component renders so the first paint already
 // has translations. App owns the runtime locale-resolution effect.
 import './i18n/index.js'
-import App from './App.js'
+import App from './SessionsApp.js'
 
 const preferredColorScheme = window.matchMedia('(prefers-color-scheme: dark)')
 const applyPreferredColorScheme = (dark: boolean) => {

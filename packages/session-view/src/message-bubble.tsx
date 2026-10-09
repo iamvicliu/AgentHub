@@ -1,3 +1,4 @@
+import { UserRound, Bot } from 'lucide-react'
 import { memo } from 'react'
 
 import type { Range as FindRange } from './find-highlight-plugin.js'
@@ -10,6 +11,8 @@ interface Props {
   message: ConversationMessage
   isDark: boolean
   showAvatar?: boolean
+  userLabel?: string | undefined
+  agentLabel?: string | undefined
   findRanges?: ReadonlyArray<FindRange>
   matchIndexOffset?: number
   activeMatchIndex?: number
@@ -20,6 +23,8 @@ function MessageBubble({
   message,
   isDark,
   showAvatar = true,
+  userLabel = 'You',
+  agentLabel = 'Agent',
   findRanges = [],
   matchIndexOffset = 0,
   activeMatchIndex = -1,
@@ -42,7 +47,7 @@ function MessageBubble({
   if (isSystem) {
     return (
       <div className="px-6 py-2">
-        <div className="rounded bg-neutral-100 px-3 py-2 text-xs text-neutral-500 italic dark:bg-neutral-800/60 dark:text-neutral-400">
+        <div className="bg-warm-surface dark:bg-dark-surface text-warm-muted dark:text-dark-muted rounded-md px-4 py-3 text-xs italic">
           <MarkdownContent {...markdownProps} />
         </div>
       </div>
@@ -51,19 +56,23 @@ function MessageBubble({
 
   if (isToolUseOnly) {
     return (
-      <div className="flex items-center gap-2 px-6 py-0.5">
+      <div
+        data-message-role={message.role}
+        className="text-warm-muted dark:text-dark-muted flex items-center gap-2 px-10 py-2"
+      >
         {showAvatar ? (
-          <div className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-neutral-700 text-[9px] font-bold text-white dark:bg-neutral-300 dark:text-neutral-900">
-            A
-          </div>
+          <span className="inline-flex flex-none items-center gap-2 text-xs font-semibold">
+            <Bot size={16} aria-hidden />
+            {agentLabel}
+          </span>
         ) : (
           <div className="h-5 w-5 flex-none" aria-hidden />
         )}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-neutral-400">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px]">
           {message.toolNames.map((name) => (
             <span
               key={name}
-              className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-500 dark:bg-neutral-800"
+              className="bg-warm-surface dark:bg-dark-surface text-warm-muted dark:text-dark-muted rounded px-2 py-1 font-mono"
             >
               {name}
             </span>
@@ -75,36 +84,38 @@ function MessageBubble({
   }
 
   return (
-    <div className="px-6 py-2">
-      <div className="flex items-start gap-2">
-        {showAvatar ? (
-          <div
-            className={`mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full text-[9px] font-bold ${
-              isUser
-                ? 'bg-accent dark:bg-accent-dark text-white dark:text-neutral-950'
-                : 'bg-neutral-700 text-white dark:bg-neutral-300 dark:text-neutral-900'
-            }`}
+    <div className="px-6 py-3" data-message-role={message.role}>
+      <div
+        className={`rounded-lg px-4 py-3 ${isUser ? 'border-warm-border dark:border-dark-border bg-warm-surface dark:bg-dark-surface border-l-accent dark:border-l-accent-dark border border-l-[3px]' : ''}`}
+      >
+        <div
+          className={`mb-2 flex items-center gap-2 text-xs font-semibold ${isUser ? 'text-accent dark:text-accent-dark' : 'text-warm-muted dark:text-dark-muted'}`}
+        >
+          {isUser ? <UserRound size={16} aria-hidden /> : <Bot size={16} aria-hidden />}
+          <span>{isUser ? userLabel : agentLabel}</span>
+          <time
+            className="text-warm-faint dark:text-dark-muted ml-auto font-mono text-[10px] font-normal"
+            dateTime={message.timestamp}
           >
-            {isUser ? 'U' : 'A'}
+            {formatTime(message.timestamp)}
+          </time>
+        </div>
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            {message.toolNames.length > 0 && (
+              <div className="mb-1 flex flex-wrap gap-1">
+                {message.toolNames.map((name) => (
+                  <span
+                    key={name}
+                    className="bg-warm-surface dark:bg-dark-surface text-warm-muted dark:text-dark-muted rounded px-2 py-1 font-mono text-[10px]"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <MarkdownContent {...markdownProps} />
           </div>
-        ) : (
-          <div className="mt-0.5 h-5 w-5 flex-none" aria-hidden />
-        )}
-        <div className="min-w-0 flex-1">
-          {message.toolNames.length > 0 && (
-            <div className="mb-1 flex flex-wrap gap-1">
-              {message.toolNames.map((name) => (
-                <span
-                  key={name}
-                  className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 dark:bg-neutral-800"
-                >
-                  {name}
-                </span>
-              ))}
-            </div>
-          )}
-          <MarkdownContent {...markdownProps} />
-          <p className="mt-1 text-[10px] text-neutral-400">{formatTime(message.timestamp)}</p>
         </div>
       </div>
     </div>

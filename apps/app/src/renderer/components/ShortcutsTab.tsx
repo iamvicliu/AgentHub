@@ -7,6 +7,7 @@ import {
   splitAlternatives,
   type ShortcutEntry,
 } from '../data/shortcuts.js'
+import Section, { settingsLabelClass } from './SettingsSection.js'
 
 export default function ShortcutsTab() {
   const { t } = useTranslation()
@@ -35,22 +36,11 @@ export default function ShortcutsTab() {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <h4 className="text-warm-faint dark:text-dark-muted mb-2 text-[11px] font-medium tracking-[0.08em] uppercase">
-        {title}
-      </h4>
-      {children}
-    </div>
-  )
-}
-
 function Row({ entry, label, isMac }: { entry: ShortcutEntry; label: string; isMac: boolean }) {
   const alternatives = splitAlternatives(entry.combo)
   return (
     <li className="flex items-center justify-between gap-4 py-2">
-      <span className="text-warm-text dark:text-dark-text text-xs">{label}</span>
+      <span className={settingsLabelClass}>{label}</span>
       <span className="flex flex-none items-center gap-1.5">
         {alternatives.map((combo, ai) => (
           <span key={ai} className="flex items-center gap-1.5">

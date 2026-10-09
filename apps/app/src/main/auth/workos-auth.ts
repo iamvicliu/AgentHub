@@ -1,7 +1,7 @@
 // WorkOS AuthKit sign-in for the desktop app — PKCE public client, per
 // the official Electron example (github.com/workos/electron-authkit-example):
 // authorize runs in the system browser, the callback comes back on the
-// spool:// custom scheme, and code_verifier stands in for a client
+// agenthub:// custom scheme, and code_verifier stands in for a client
 // secret (the binary can be decompiled, so it must not carry one).
 //
 // The final code exchange runs SERVER-SIDE at /api/auth/sign-in-with-code:
@@ -21,7 +21,7 @@ import { onDeepLink } from './deep-link.js'
 const AUTHORIZE_URL = 'https://api.workos.com/user_management/authorize'
 // Registered as a redirect URI in the WorkOS dashboard (per environment;
 // sandbox for dev, production for release builds).
-export const AUTH_CALLBACK_URL = 'spool://auth/callback'
+export const AUTH_CALLBACK_URL = 'agenthub://auth/callback'
 // AuthKit sign-in can involve email codes or account creation — give the
 // human time. Matches the cli-auth broker's approval window.
 const CALLBACK_TIMEOUT_MS = 15 * 60 * 1000

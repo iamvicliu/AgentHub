@@ -18,6 +18,11 @@ const SOURCE_LABEL: Record<SessionSource, string> = {
   gemini: 'Gemini',
   opencode: 'OpenCode',
   pi: 'Pi',
+  hermes: 'Hermes',
+  openclaw: 'OpenClaw',
+  workbuddy: 'WorkBuddy',
+  dsh: 'DeepSeek Harness',
+  cursor: 'Cursor',
 }
 
 interface ComposeOpts {

@@ -164,7 +164,18 @@ describe('migration v1-v3 (historical connector path)', () => {
     const sources = (db.prepare('SELECT name FROM sources').all() as { name: string }[]).map(
       (s) => s.name,
     )
-    expect(sources.sort()).toEqual(['claude', 'codex', 'gemini', 'opencode', 'pi'])
+    expect(sources.sort()).toEqual([
+      'claude',
+      'codex',
+      'cursor',
+      'dsh',
+      'gemini',
+      'hermes',
+      'openclaw',
+      'opencode',
+      'pi',
+      'workbuddy',
+    ])
 
     // Session preserved
     const sess = db

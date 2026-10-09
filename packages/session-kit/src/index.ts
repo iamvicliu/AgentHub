@@ -2,6 +2,7 @@ export { splitRecords, canonicalizeRecord } from './records.js'
 export {
   parseClaudeSessionText,
   parseCodexSessionLines,
+  codexRolloutSessionUuid,
   parsePortableSessionText,
   parseSessionText,
   PORTABLE_MESSAGE_TYPE,

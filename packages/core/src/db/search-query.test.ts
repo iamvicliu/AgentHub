@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { buildLikeSnippet, searchFragments, searchSessionPreview } from './queries.js'
+import {
+  buildLikeSnippet,
+  getSessionWithMessages,
+  searchFragments,
+  searchSessionPreview,
+} from './queries.js'
 import {
   buildFtsQuery,
   buildPreviewFtsPlan,
@@ -19,6 +24,29 @@ afterEach(() => {
 })
 
 describe('buildFtsQuery', () => {
+  it('lets the desktop reader retrieve subagent records without changing default consumers', () => {
+    const db = createSearchTestDb()
+    db.exec(`ALTER TABLE sessions ADD COLUMN scan_finding_count INTEGER DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN scan_high_count INTEGER DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN scan_purged_count INTEGER DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN scan_completed_at TEXT;
+      ALTER TABLE sessions ADD COLUMN account TEXT;`)
+    insertSession(db, {
+      id: 9,
+      uuid: 'reading-internal',
+      filePath: '/tmp/internal.jsonl',
+      title: 'Reading',
+      startedAt: '2026-10-07T00:00:00Z',
+      messages: ['User', 'Subagent'],
+    })
+    db.prepare(
+      "UPDATE messages SET is_sidechain = 1, parent_uuid = ? WHERE session_id = 9 AND content_text = 'Subagent'",
+    ).run('claude-subagent')
+    expect(getSessionWithMessages(db, 'reading-internal')?.messages).toHaveLength(1)
+    const all = getSessionWithMessages(db, 'reading-internal', { includeInternal: true })?.messages
+    expect(all).toHaveLength(2)
+    expect(all?.[1]?.isSidechain).toBe(true)
+  })
   it('keeps single-token searches as exact terms', () => {
     expect(buildFtsQuery('4242')).toBe('"4242"')
   })
@@ -116,17 +144,33 @@ describe('buildLikeSnippet', () => {
 })
 
 describe('searchFragments', () => {
+  it('ranks title hits ahead of newer content hits and uses message time within each group', () => {
+    const db = createSearchTestDb()
+    db.prepare('UPDATE sessions SET title = ? WHERE id = 1').run('A content-only session')
+    db.prepare('UPDATE session_search SET title = ? WHERE session_id = 1').run(
+      'A content-only session',
+    )
+    db.prepare('UPDATE messages SET timestamp = ? WHERE session_id = 1').run('2026-10-06T12:00:00Z')
+    db.prepare('UPDATE messages SET timestamp = ? WHERE session_id = 2').run('2026-10-05T12:00:00Z')
+    db.prepare('UPDATE messages SET timestamp = ? WHERE session_id = 3').run('2026-10-04T12:00:00Z')
+    db.prepare('UPDATE messages SET timestamp = ? WHERE session_id = 4').run('2026-10-03T12:00:00Z')
+    expect(searchFragments(db, '4242', { limit: 4 }).map((result) => result.sessionId)).toEqual([
+      2, 3, 4, 1,
+    ])
+    expect(searchFragments(db, '4242', { limit: 1 })[0]?.sessionId).toBe(2)
+  })
+
   it('finds messages that contain separated keywords from one natural-language query', () => {
     const db = createSearchTestDb()
     const results = searchFragments(db, '查看一下 4242', { limit: 10 })
 
     expect(results).toHaveLength(2)
-    expect(results[0]?.sessionTitle).toBe('exact-phrase-change-4242')
-    expect(results[0]?.matchType).toBe('phrase')
-    expect(results[1]?.sessionTitle).toBe('review-change-4242')
-    expect(results[1]?.matchType).toBe('all_terms')
-    expect(results[1]?.snippet).toContain('<mark>查看一下</mark>')
-    expect(results[1]?.snippet).toContain('<mark>4242</mark>')
+    expect(results[0]?.sessionTitle).toBe('review-change-4242')
+    expect(results[0]?.matchType).toBe('all_terms')
+    expect(results[1]?.sessionTitle).toBe('exact-phrase-change-4242')
+    expect(results[1]?.matchType).toBe('phrase')
+    expect(results[0]?.snippet).toContain('<mark>查看一下</mark>')
+    expect(results[0]?.snippet).toContain('<mark>4242</mark>')
   })
 
   it('still allows broad single-term matches for shared PR numbers', () => {
@@ -154,7 +198,7 @@ describe('searchFragments', () => {
     const db = createSearchTestDb()
     const results = searchFragments(db, '查看 4242', { limit: 10 })
 
-    expect(results.slice(0, 2).map((result) => result.sessionTitle)).toEqual(
+    expect(results.map((result) => result.sessionTitle)).toEqual(
       expect.arrayContaining(['exact-phrase-change-4242', 'review-change-4242']),
     )
     expect(

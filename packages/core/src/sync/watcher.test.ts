@@ -39,6 +39,11 @@ function makeTempRoots() {
   vi.stubEnv('SPOOL_GEMINI_DIR', join(baseDir, 'gemini'))
   vi.stubEnv('SPOOL_OPENCODE_DIR', opencodeRoot)
   vi.stubEnv('SPOOL_PI_DIR', join(baseDir, 'pi'))
+  // Every source must be stubbed: an unstubbed one falls back to the developer's
+  // real home directory, and its files would show up as extra syncFile calls.
+  vi.stubEnv('SPOOL_WORKBUDDY_DIR', join(baseDir, 'workbuddy'))
+  vi.stubEnv('SPOOL_DSH_DIR', join(baseDir, 'dsh'))
+  vi.stubEnv('SPOOL_CURSOR_DIR', join(baseDir, 'cursor'))
   return { baseDir, claudeRoot, codexRoot, geminiRoot, opencodeRoot }
 }
 
@@ -59,7 +64,13 @@ function makeStubSyncer(
   } = {},
 ) {
   const calls: SyncCall[] = []
+  const catalogCalls: number[] = []
   const syncer = {
+    cleanupMissingSessions: () => 0,
+    applyCodexCatalog: () => {
+      catalogCalls.push(Date.now())
+      return 1
+    },
     syncFile(path: string, source: SessionSource) {
       calls.push({ path, source })
       if (opts.throws) throw opts.throws
@@ -67,7 +78,7 @@ function makeStubSyncer(
       return opts.result ?? 'added'
     },
   } as unknown as Syncer
-  return { syncer, calls }
+  return { syncer, calls, catalogCalls }
 }
 
 async function startWatcher(
@@ -95,6 +106,21 @@ const waitFor = async (pred: () => boolean, timeoutMs = 2000, stepMs = 10) => {
 }
 
 describe('SpoolWatcher', () => {
+  test('reconciles deleted transcripts and notifies the UI', async () => {
+    const { claudeRoot } = makeTempRoots()
+    const path = join(claudeRoot, 'project-a', 'removed.jsonl')
+    writeFileSync(path, '{}\n')
+    const { syncer } = makeStubSyncer()
+    const cleanup = vi.spyOn(syncer, 'cleanupMissingSessions').mockReturnValue(1)
+    const watcher = await startWatcher(syncer)
+    const events: number[] = []
+    watcher.on('new-sessions', (_event, data) => events.push(data.count))
+    rmSync(path)
+    await waitFor(() => events.length > 0, 3000)
+    expect(cleanup).toHaveBeenCalled()
+    expect(events).toContain(1)
+  })
+
   test('emits new-sessions and calls syncFile once when a session file is added', async () => {
     const { claudeRoot } = makeTempRoots()
     const { syncer, calls } = makeStubSyncer({ result: 'added' })
@@ -115,6 +141,24 @@ describe('SpoolWatcher', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.event).toBe('new-sessions')
     expect((events[0]?.data as { count: number }).count).toBe(1)
+  })
+
+  test('reconciles the Codex thread catalog when Codex renames, archives or deletes a thread', async () => {
+    const { baseDir } = makeTempRoots()
+    const { syncer, calls, catalogCalls } = makeStubSyncer()
+    const events: WatcherEvent[] = []
+    const w = await startWatcher(syncer)
+    w.on('new-sessions', (event) => {
+      events.push(event)
+    })
+    writeFileSync(join(baseDir, 'codex', 'state_5.sqlite-wal'), 'x')
+    writeFileSync(join(baseDir, 'codex', 'session_index.jsonl'), '{}\n')
+    writeFileSync(join(baseDir, 'codex', 'config.toml'), '')
+    await waitFor(() => catalogCalls.length > 0)
+    await new Promise((r) => setTimeout(r, FAST.stabilityMs * 3))
+    expect(catalogCalls).toHaveLength(1)
+    expect(events).toEqual(['new-sessions'])
+    expect(calls).toHaveLength(0)
   })
 
   test('ignores non-session files', async () => {
@@ -254,6 +298,15 @@ describe('SpoolWatcher', () => {
       join(tmpdir(), 'spool-watcher-nonexistent-' + Date.now() + '-o'),
     )
     vi.stubEnv('SPOOL_PI_DIR', join(tmpdir(), 'spool-watcher-nonexistent-' + Date.now() + '-p'))
+    vi.stubEnv(
+      'SPOOL_WORKBUDDY_DIR',
+      join(tmpdir(), 'spool-watcher-nonexistent-' + Date.now() + '-wb'),
+    )
+    vi.stubEnv('SPOOL_DSH_DIR', join(tmpdir(), 'spool-watcher-nonexistent-' + Date.now() + '-dsh'))
+    vi.stubEnv(
+      'SPOOL_CURSOR_DIR',
+      join(tmpdir(), 'spool-watcher-nonexistent-' + Date.now() + '-cur'),
+    )
     const { syncer } = makeStubSyncer()
     const w = new SpoolWatcher(syncer, FAST)
     runningWatchers.push(w)

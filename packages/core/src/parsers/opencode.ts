@@ -6,7 +6,7 @@ import { openDatabase } from '../db/native-binding.js'
 import type { ParseSessionResult, ParsedMessage, ParsedSession } from '../types.js'
 import { stripSpoolSystemPrelude } from './spool-prelude.js'
 
-export const OPENCODE_INDEX_VERSION = 'opencode-v3-session-model-json'
+export const OPENCODE_INDEX_VERSION = 'opencode-v4-message-model-agent'
 export const OPENCODE_DB_NAME = 'opencode.db'
 const OPENCODE_SESSION_SEPARATOR = '#session='
 const OPENCODE_SUBAGENT_PARENT_PREFIX = 'opencode-subagent:'
@@ -28,8 +28,6 @@ interface OpenCodeSessionRow {
   title: string
   time_created: number
   time_updated: number
-  model: string | null
-  agent: string | null
 }
 
 interface OpenCodeMessageRow {
@@ -48,6 +46,8 @@ interface OpenCodePartRow {
 interface OpenCodeMessageData {
   role?: string
   parentID?: string
+  /** OpenCode ≥ the schema where `model`/`agent` left the session row. */
+  agent?: string
   modelID?: string
   providerID?: string
   model?: {
@@ -192,7 +192,7 @@ export function loadOpenCodeSession(filePath: string): ParseSessionResult {
   try {
     const session = db
       .prepare(`
-      SELECT id, parent_id, directory, title, time_created, time_updated, model, agent
+      SELECT id, parent_id, directory, title, time_created, time_updated
       FROM session
       WHERE id = ? AND time_archived IS NULL
     `)
@@ -206,7 +206,11 @@ export function loadOpenCodeSession(filePath: string): ParseSessionResult {
     if (session.parent_id) return { kind: 'filtered' }
 
     let cwd = session.directory || ''
-    let model = normalizeModel(session.model)
+    // OpenCode moved `model` (and `agent`) off the session row and onto each
+    // message's own data — one session can mix models — so the session SELECT
+    // no longer carries them. loadMessagesForOpenCodeSession reports both via
+    // onModel/onAgent, which is also where older DBs' values now come from.
+    let model = ''
     const messages = loadMessagesForOpenCodeSession(db, session, {
       sidechain: false,
       onCwd: (value) => {
@@ -225,14 +229,18 @@ export function loadOpenCodeSession(filePath: string): ParseSessionResult {
 
     for (const child of childSessions) {
       const groupKey = `${OPENCODE_SUBAGENT_PARENT_PREFIX}${child.id}`
+      let childAgent = ''
       const childMessages = loadMessagesForOpenCodeSession(db, child, {
         sidechain: true,
         uuidPrefix: `${child.id}:`,
         parentUuid: groupKey,
+        onAgent: (value) => {
+          if (!childAgent) childAgent = value
+        },
       })
       if (childMessages.length === 0) continue
       endedAtMs = Math.max(endedAtMs, child.time_updated)
-      messages.push(makeSubagentHeaderMessage(child, groupKey))
+      messages.push(makeSubagentHeaderMessage(child, groupKey, childAgent))
       messages.push(...childMessages)
     }
 
@@ -301,21 +309,21 @@ function listOpenCodeChildSessions(db: Database.Database, sessionId: string): Op
   return db
     .prepare(`
     WITH RECURSIVE child_sessions(
-      id, parent_id, directory, title, time_created, time_updated, model, agent, depth
+      id, parent_id, directory, title, time_created, time_updated, depth
     ) AS (
-      SELECT id, parent_id, directory, title, time_created, time_updated, model, agent, 1 AS depth
+      SELECT id, parent_id, directory, title, time_created, time_updated, 1 AS depth
       FROM session
       WHERE parent_id = ? AND time_archived IS NULL
 
       UNION ALL
 
       SELECT child.id, child.parent_id, child.directory, child.title, child.time_created,
-             child.time_updated, child.model, child.agent, child_sessions.depth + 1
+             child.time_updated, child_sessions.depth + 1
       FROM session child
       JOIN child_sessions ON child.parent_id = child_sessions.id
       WHERE child.time_archived IS NULL AND child_sessions.depth < ${OPENCODE_MAX_SESSION_DEPTH}
     )
-    SELECT id, parent_id, directory, title, time_created, time_updated, model, agent
+    SELECT id, parent_id, directory, title, time_created, time_updated
     FROM child_sessions
     ORDER BY time_created ASC, depth ASC, id ASC
   `)
@@ -331,6 +339,7 @@ function loadMessagesForOpenCodeSession(
     parentUuid?: string
     onCwd?: (value: string) => void
     onModel?: (value: string) => void
+    onAgent?: (value: string) => void
   },
 ): ParsedMessage[] {
   const messageRows = db
@@ -368,6 +377,9 @@ function loadMessagesForOpenCodeSession(
     const model = modelFromMessage(messageData)
     if (model) opts.onModel?.(model)
 
+    const agent = typeof messageData.agent === 'string' ? messageData.agent.trim() : ''
+    if (agent) opts.onAgent?.(agent)
+
     const parts = (partsByMessage.get(messageRow.id) ?? [])
       .map((part) => parseJson<OpenCodePartData>(part.data))
       .filter((part): part is OpenCodePartData => Boolean(part))
@@ -391,9 +403,12 @@ function loadMessagesForOpenCodeSession(
   return messages
 }
 
-function makeSubagentHeaderMessage(session: OpenCodeSessionRow, groupKey: string): ParsedMessage {
+function makeSubagentHeaderMessage(
+  session: OpenCodeSessionRow,
+  groupKey: string,
+  agent: string,
+): ParsedMessage {
   const title = session.title?.trim() || session.id
-  const agent = session.agent?.trim()
   const label = agent ? `@${agent} · ${title}` : title
   return {
     uuid: `${session.id}:header`,
@@ -443,22 +458,10 @@ function modelFromMessage(message: OpenCodeMessageData): string {
   return modelId ?? ''
 }
 
-// OpenCode stores `session.model` as a serialized JSON object
-// (`{"id","providerID","variant"?}`), not a plain string — so trim alone would
-// leak raw JSON into the model field. Parse it into the same `provider/model`
-// shape modelFromMessage produces; fall back to the trimmed string for any
-// non-JSON or unparseable value.
-function normalizeModel(model: string | null): string {
-  if (!model) return ''
-  const trimmed = model.trim()
-  if (!trimmed.startsWith('{')) return trimmed
-  const parsed = parseJson<{ id?: string; modelID?: string; providerID?: string }>(trimmed)
-  if (!parsed) return trimmed
-  const providerId = parsed.providerID
-  const modelId = parsed.modelID ?? parsed.id
-  if (providerId && modelId) return `${providerId}/${modelId}`
-  return modelId ?? ''
-}
+// OpenCode no longer stores `model` on the session row; each message carries
+// its own `{providerID, modelID}` (see modelFromMessage). Older DBs that still
+// had a serialized session-level model (`{"id","providerID","variant"?}`) are
+// superseded by the per-message value, which is what hosts now read.
 
 function parseJson<T>(raw: string): T | null {
   try {

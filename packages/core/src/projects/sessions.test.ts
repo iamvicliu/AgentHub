@@ -156,6 +156,34 @@ describe('listRecentSessionsPage', () => {
     expect(page2.nextCursor).toBeNull()
   })
 
+  it('filters by agent before pagination and excludes pinned sessions', () => {
+    db.exec("UPDATE sessions SET source_id = 2 WHERE session_uuid = 'b'")
+    db.exec("INSERT INTO pins (session_uuid) VALUES ('c')")
+    expect(
+      listRecentSessionsPage(db, { sources: ['claude'], excludePinned: true }).sessions.map(
+        (s) => s.sessionUuid,
+      ),
+    ).toEqual(['a'])
+    expect(
+      listRecentSessionsPage(db, { sources: ['codex'] }).sessions.map((s) => s.sessionUuid),
+    ).toEqual(['b'])
+    expect(listRecentSessionsPage(db).sessions).toHaveLength(3)
+  })
+
+  it('sorts and paginates by last activity rather than session creation', () => {
+    db.exec("UPDATE sessions SET ended_at = '2026-05-04T00:00:00Z' WHERE session_uuid = 'a'")
+    const first = listRecentSessionsPage(db, { limit: 1 })
+    expect(first.sessions[0]?.sessionUuid).toBe('a')
+    const second = listRecentSessionsPage(db, { limit: 1, cursor: first.nextCursor! })
+    expect(second.sessions[0]?.sessionUuid).toBe('c')
+    expect(
+      listRecentSessionsPage(db, { sortOrder: 'oldest' }).sessions.map((s) => s.sessionUuid),
+    ).toEqual(['b', 'c', 'a'])
+    expect(
+      listRecentSessionsPage(db, { sortOrder: 'title' }).sessions.map((s) => s.sessionUuid),
+    ).toEqual(['a', 'b', 'c'])
+  })
+
   it('searches the complete recent-session library before applying the page limit', () => {
     const page = listRecentSessionsPage(db, { limit: 2, search: '2026-05-01' })
 

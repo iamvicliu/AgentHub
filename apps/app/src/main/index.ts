@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 
@@ -12,7 +14,6 @@ import {
   net,
   shell,
 } from 'electron'
-import type { MenuItemConstructorOptions } from 'electron'
 
 // Install global error handlers as the very first thing in the file. Node 22
 // defaults to --unhandled-rejections=strict, which means a single unhandled
@@ -32,9 +33,9 @@ process.on('uncaughtException', (err) => {
     // The dialog is best-effort; if Electron itself isn't ready yet this
     // throws, and we just log.
     dialog.showErrorBox(
-      'Spool ran into an unexpected error',
+      'AgentHub ran into an unexpected error',
       `${err instanceof Error ? err.message : String(err)}\n\n` +
-        `Spool will keep running, but if you see this repeatedly please restart the app.`,
+        `AgentHub will keep running, but if you see this repeatedly please restart the app.`,
     )
   } catch {
     /* dialog unavailable — log already happened */
@@ -43,6 +44,17 @@ process.on('uncaughtException', (err) => {
 
 import {
   getDB,
+  renameIndexedSession,
+  sessionDeletionFiles,
+  deleteSessionWithTranscripts,
+  hermesSessionTarget,
+  deleteHermesSession,
+  renameHermesSession,
+  renameCodexSession,
+  type HermesSessionTarget,
+  type HermesCliResult,
+  SessionDeletionBlockedError,
+  SessionDeletionPartialError,
   Syncer,
   SpoolWatcher,
   searchFragments,
@@ -79,14 +91,24 @@ import { isSessionProvider } from '@spool-lab/session-kit'
 import type Database from 'better-sqlite3'
 import { Effect } from 'effect'
 
+import { validateCustomTerminal } from '../shared/customTerminal.js'
+import {
+  applicationMenuTemplate,
+  nativeDialogText,
+  normalizeSystemLocale,
+} from '../shared/nativeMenu.js'
 import { getSessionResumeCommand } from '../shared/resumeCommand.js'
+import { parseSessionLink, type SessionLinkResult } from '../shared/sessionLink.js'
+import { getSessionSourceLabel } from '../shared/sessionSources.js'
 import { AcpManager } from './acp.js'
 import {
   dispatchDeepLink,
   dispatchDeepLinkFromArgv,
   registerDeepLinkScheme,
+  onDeepLink,
 } from './auth/deep-link.js'
-import { hydrateBinaryCache } from './binaryCache.js'
+import { cachedResolveAsyncPersistent, hydrateBinaryCache } from './binaryCache.js'
+import { deleteCodexThread, setCodexThreadName } from './codexAppServer.js'
 import { snapshotEventLoopLag, startEventLoopMonitor } from './eventLoopMonitor.js'
 import { registerHubShareIpc } from './ipc/hub-share.js'
 import {
@@ -107,10 +129,11 @@ import { makePfCoordinator } from './security/pf-coordinator.js'
 import { registerPfModelProtocol, registerPfModelScheme } from './security/pf-model-protocol.js'
 import { makePfRuntime, pfModelInstalled } from './security/pf-runtime.js'
 import { loadSecurityPreferences, saveSecurityPreferences } from './securityPreferences.js'
+import { resolveSessionMessage } from './sessionLink.js'
 import { resolveResumeWorkingDirectory } from './sessionResume.js'
 import type { SyncWorkerMessage } from './sync-worker.js'
-import { openTerminal } from './terminal.js'
-import { setupTray } from './tray.js'
+import { openTerminal, discoverTerminals } from './terminal.js'
+import { setupTray, updateTrayMenu } from './tray.js'
 import {
   loadUIPreferences,
   saveThemeEditor,
@@ -140,6 +163,9 @@ const isMac = process.platform === 'darwin'
 const customUserDataDir = process.env['SPOOL_ELECTRON_USER_DATA_DIR']?.trim()
 if (customUserDataDir) {
   app.setPath('userData', customUserDataDir)
+} else if (!isDevMode) {
+  // Keep the existing Chromium profile, local storage and settings after rebranding.
+  app.setPath('userData', join(app.getPath('appData'), 'Spool'))
 }
 
 const { run: runWithObservability } = makeObservabilityRuntime(
@@ -153,7 +179,7 @@ const { run: runWithObservability } = makeObservabilityRuntime(
       },
 )
 // macOS menu bar shows the first menu's label as the app name
-app.setName(isDevMode ? 'Spool DEV' : 'Spool')
+app.setName(isDevMode ? 'AgentHub DEV' : 'AgentHub')
 
 const uiPreferences = loadUIPreferences()
 nativeTheme.themeSource = uiPreferences.themeSource
@@ -164,10 +190,27 @@ if (!gotSingleInstanceLock) {
   app.quit()
 }
 
-// spool:// deep links (today: the WorkOS sign-in callback). macOS
+// agenthub:// deep links (today: the WorkOS sign-in callback). macOS
 // delivers via 'open-url'; Windows/Linux relaunch with the URL in argv,
 // which the single-instance lock forwards through 'second-instance'.
 registerDeepLinkScheme()
+let sessionLinkRendererReady = false
+const pendingSessionLinks: string[] = []
+onDeepLink((url) => {
+  if (url.hostname !== 'session') return false
+  pendingSessionLinks.push(url.href)
+  focusExistingWindow()
+  flushSessionLinks()
+  return true
+})
+
+function flushSessionLinks() {
+  if (!sessionLinkRendererReady || !mainWindow || mainWindow.isDestroyed()) return
+  while (pendingSessionLinks.length) {
+    mainWindow.webContents.send('spool:open-session-link', pendingSessionLinks.shift())
+  }
+}
+
 app.on('open-url', (event, url) => {
   event.preventDefault()
   dispatchDeepLink(url)
@@ -523,8 +566,9 @@ async function syncPfRuntime(pfEnabled: boolean): Promise<void> {
 }
 
 function createWindow(): BrowserWindow {
+  sessionLinkRendererReady = false
   const win = new BrowserWindow({
-    title: isDevMode ? 'Spool DEV' : 'Spool',
+    title: isDevMode ? 'AgentHub DEV' : 'AgentHub',
     width: 1080,
     height: 740,
     minWidth: 800,
@@ -579,6 +623,9 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  win.webContents.on('did-start-loading', () => {
+    sessionLinkRendererReady = false
+  })
   win.on('closed', () => {
     mainWindow = null
     if (!isDevMode) app.dock?.hide()
@@ -587,44 +634,31 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-function buildApplicationMenu(): Menu {
-  const platformMenus: MenuItemConstructorOptions[] = isMac
-    ? [
-        {
-          label: 'Spool',
-          submenu: [
-            { role: 'about', label: 'About Spool' },
-            { type: 'separator' },
-            { role: 'hide', label: 'Hide Spool' },
-            { role: 'hideOthers' },
-            { role: 'unhide' },
-            { type: 'separator' },
-            { role: 'quit', label: 'Quit Spool' },
-          ],
-        },
-      ]
-    : [
-        {
-          label: 'Spool',
-          submenu: [
-            { role: 'about', label: 'About Spool' },
-            { type: 'separator' },
-            { role: 'quit', label: 'Quit Spool' },
-          ],
-        },
-      ]
-
-  return Menu.buildFromTemplate([
-    ...platformMenus,
-    { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' },
-  ])
+function openSettings(): void {
+  focusExistingWindow()
+  const contents = mainWindow?.webContents
+  if (!contents) return
+  if (contents.isLoadingMainFrame()) {
+    contents.once('did-finish-load', () => contents.send('spool:open-settings'))
+  } else {
+    contents.send('spool:open-settings')
+  }
 }
 
+function buildApplicationMenu(): Menu {
+  return Menu.buildFromTemplate(
+    applicationMenuTemplate(
+      acpManager.getAgentsConfig().language,
+      app.getLocale(),
+      isMac,
+      openSettings,
+    ),
+  )
+}
 let activeSyncPromise: Promise<{ added: number; updated: number; errors: number }> | null = null
 
 function runSyncWorker(): Promise<{ added: number; updated: number; errors: number }> {
+  if (deletingSession) return Promise.reject(new Error('删除会话期间无法同步，请稍后重试'))
   if (activeSyncPromise) return activeSyncPromise
 
   activeSyncPromise = new Promise<{ added: number; updated: number; errors: number }>(
@@ -679,10 +713,9 @@ app
       app.dock?.setIcon(nativeImage.createFromPath(dockIconPath))
     } catch {}
 
-    Menu.setApplicationMenu(buildApplicationMenu())
-
     db = getDB()
     acpManager = new AcpManager()
+    Menu.setApplicationMenu(buildApplicationMenu())
 
     syncer = new Syncer(db, undefined, (sessionId) => {
       // Sync mutated this session's messages; existing findings now have
@@ -780,20 +813,30 @@ app
 
     function showOrCreateWindow() {
       if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore()
         mainWindow.show()
+        mainWindow.focus()
       } else {
         mainWindow = createWindow()
       }
       void app.dock?.show()
     }
     focusExistingWindow = showOrCreateWindow
+    dispatchDeepLinkFromArgv(process.argv)
+    if (pendingSessionLinks.length) showOrCreateWindow()
+    flushSessionLinks()
 
     if (!isDevMode) {
-      setupTray(showOrCreateWindow, () => {
-        void runSyncWorker().catch((error) => {
-          console.error('[sync-worker] tray sync failed:', error)
-        })
-      })
+      setupTray(
+        showOrCreateWindow,
+        () => {
+          void runSyncWorker().catch((error) => {
+            console.error('[sync-worker] tray sync failed:', error)
+          })
+        },
+        openSettings,
+        () => acpManager.getAgentsConfig().language,
+      )
     }
 
     app.on('activate', showOrCreateWindow)
@@ -805,7 +848,10 @@ app
     // in the stack. Logging the error here gives users something actionable.
     console.error('[startup] fatal error during app initialization:', err)
     if (err instanceof Error && err.stack) console.error(err.stack)
-    dialog.showErrorBox('Spool failed to start', err instanceof Error ? err.message : String(err))
+    dialog.showErrorBox(
+      'AgentHub failed to start',
+      err instanceof Error ? err.message : String(err),
+    )
     app.exit(1)
   })
 
@@ -893,12 +939,9 @@ ipcMain.handle(
   },
 )
 
-ipcMain.handle(
-  'spool:list-sessions',
-  (_e, args: { limit?: number; cursor?: SessionsCursor } = {}) => {
-    return listRecentSessionsPage(db, args)
-  },
-)
+ipcMain.handle('spool:list-sessions', (_e, args: ListSessionsByIdentityOptions = {}) => {
+  return listRecentSessionsPage(db, args)
+})
 
 ipcMain.handle('spool:list-project-groups', () => {
   return listProjectGroups(db)
@@ -922,7 +965,211 @@ ipcMain.handle(
 )
 
 ipcMain.handle('spool:get-session', (_e, { sessionUuid }: { sessionUuid: string }) => {
-  return getSessionWithMessages(db, sessionUuid)
+  return getSessionWithMessages(db, sessionUuid, { includeInternal: true })
+})
+
+ipcMain.handle('spool:session-links-ready', (event) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid session link sender')
+  sessionLinkRendererReady = true
+  flushSessionLinks()
+})
+
+ipcMain.handle('spool:resolve-session-link', (event, raw: unknown): SessionLinkResult => {
+  try {
+    if (event.sender !== mainWindow?.webContents || typeof raw !== 'string')
+      throw new Error('会话链接请求无效。')
+    const link = parseSessionLink(raw)
+    const selected = getSessionWithMessages(db, link.sessionUuid, { includeInternal: true })
+    if (!selected) throw new Error('找不到此会话，请先同步 AgentHub。')
+    if (!existsSync(selected.session.filePath) && !existsSync(`${selected.session.filePath}.zst`))
+      throw new Error('原始会话记录已删除或不可访问，无法打开此链接。')
+    const messageId = resolveSessionMessage(raw, selected.messages)
+    return {
+      ok: true,
+      sessionUuid: link.sessionUuid,
+      ...(messageId === undefined ? {} : { messageId }),
+    }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
+
+ipcMain.handle(
+  'spool:rename-session',
+  async (_e, { uuid, title }: { uuid: string; title: string }) => {
+    try {
+      // Hermes titles live in its own store: write through its CLI so Hermes shows the same name.
+      const source = (
+        db
+          .prepare(
+            'SELECT src.name AS source FROM sessions s JOIN sources src ON src.id = s.source_id WHERE s.session_uuid = ?',
+          )
+          .get(uuid) as { source: string } | undefined
+      )?.source
+      const saved =
+        source === 'hermes'
+          ? await renameHermesSession(db, uuid, title, runHermesRename)
+          : source === 'codex'
+            ? await renameCodexSession(db, uuid, title, setCodexThreadName)
+            : (renameIndexedSession(db, uuid, title), title.trim())
+      searchCache.clear()
+      mainWindow?.webContents.send('spool:new-sessions', { count: 0 })
+      return { ok: true, title: saved }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  },
+)
+
+/** Run a `hermes sessions …` command against the Hermes home that owns the indexed store. */
+async function runHermesSessions(
+  target: HermesSessionTarget,
+  args: string[],
+): Promise<HermesCliResult> {
+  const bin = await cachedResolveAsyncPersistent('hermes')
+  if (!bin)
+    throw new SessionDeletionBlockedError('agent-unavailable', 'The hermes command was not found', {
+      source: 'hermes',
+    })
+  return new Promise((resolve) => {
+    execFile(
+      bin,
+      ['sessions', ...args],
+      {
+        env: { ...process.env, HERMES_HOME: target.hermesHome },
+        timeout: 60_000,
+        maxBuffer: 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        const code = error ? (typeof error.code === 'number' ? error.code : null) : 0
+        resolve({
+          code,
+          output: [stdout, stderr, error && !stdout && !stderr ? error.message : '']
+            .filter(Boolean)
+            .join('\n'),
+        })
+      },
+    )
+  })
+}
+
+const runHermesDelete = (target: HermesSessionTarget) =>
+  runHermesSessions(target, ['delete', '--yes', target.sessionId])
+const runHermesRename = (target: HermesSessionTarget, title: string) =>
+  runHermesSessions(target, ['rename', target.sessionId, title])
+
+let deletingSession = false
+ipcMain.handle('spool:delete-session', async (_e, { uuid }: { uuid: string }) => {
+  if (!mainWindow) throw new Error('Application window is unavailable')
+  const window = mainWindow
+  const text = nativeDialogText(acpManager.getAgentsConfig().language, app.getLocale())
+  const explain = (title: string, detail: string, type: 'warning' | 'error' = 'warning') =>
+    dialog.showMessageBox(window, {
+      type,
+      message: title,
+      detail,
+      buttons: [text('ok')],
+      noLink: true,
+    })
+  if (deletingSession) {
+    await explain(text('blockedTitle'), text('busy'))
+    return { deleted: false }
+  }
+  deletingSession = true
+  let watcherPaused = false
+  try {
+    if (activeSyncPromise) await activeSyncPromise
+    const session = getSessionWithMessages(db, uuid)?.session
+    if (!session) throw new Error('Session not found')
+    const source = getSessionSourceLabel(session.source)
+    if (session.source === 'hermes') {
+      // Hermes keeps sessions in a shared SQLite store: delete through its own CLI, permanently.
+      const target = hermesSessionTarget(db, uuid)
+      const confirmation = await dialog.showMessageBox(window, {
+        type: 'warning',
+        message: text('deleteTitle', { title: session.title ?? uuid }),
+        detail: `${text('hermesDeleteDetail')}\n\n${target.databasePath}\n${target.sessionId}`,
+        buttons: [text('cancel'), text('deletePermanent')],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      })
+      if (confirmation.response !== 1) return { deleted: false }
+      watcher.stop()
+      watcherPaused = true
+      await deleteHermesSession(db, uuid, runHermesDelete)
+      searchCache.clear()
+      window.webContents.send('spool:new-sessions', { count: 0 })
+      return { deleted: true }
+    }
+    const paths = sessionDeletionFiles(db, uuid)
+    const confirmation = await dialog.showMessageBox(window, {
+      type: 'warning',
+      message: text('deleteTitle', { title: session.title ?? uuid }),
+      detail: `${text('deleteDetail', { source })}${session.source === 'codex' ? `\n${text('codexDeleteNote')}` : ''}\n\n${paths.join('\n') || text('deleteNoFiles')}`,
+      buttons: [text('cancel'), text('deleteConfirm')],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (confirmation.response !== 1) return { deleted: false }
+    watcher.stop()
+    watcherPaused = true
+    const currentPaths = sessionDeletionFiles(db, uuid)
+    if (currentPaths.join('\n') !== paths.join('\n')) {
+      await explain(text('blockedTitle'), text('filesChanged'))
+      return { deleted: false }
+    }
+    await deleteSessionWithTranscripts(db, uuid, paths, (path) => shell.trashItem(path))
+    if (session.source === 'codex') {
+      // Files are in the Trash; also drop the thread from Codex's own list so the Codex app agrees.
+      try {
+        await deleteCodexThread(uuid)
+      } catch (error) {
+        await explain(
+          text('failedTitle'),
+          `${text('codexListNotCleared')}\n\n${error instanceof Error ? error.message : String(error)}`,
+          'error',
+        )
+      }
+    }
+    searchCache.clear()
+    window.webContents.send('spool:new-sessions', { count: 0 })
+    return { deleted: true }
+  } catch (error) {
+    // Explain refusals and failures in a modal the user can't miss, in the app language.
+    if (error instanceof SessionDeletionBlockedError) {
+      const source = getSessionSourceLabel(error.detail.source ?? '')
+      const detail = {
+        running: () =>
+          error.detail.source === 'hermes'
+            ? `${text('hermesRunning')}\n\n${error.detail.output ?? ''}`.trim()
+            : text('running', { pid: error.detail.pid ?? '?' }),
+        unsupported: () => text('unsupported', { source }),
+        'agent-unavailable': () => text('agentUnavailable', { source }),
+        'shared-database': () => text('sharedDatabase'),
+        'root-unavailable': () => text('rootUnavailable'),
+        'unsafe-path': () => `${text('unsafePath')}\n\n${error.message}`,
+      }[error.reason]()
+      await explain(text('blockedTitle'), detail)
+    } else if (error instanceof SessionDeletionPartialError) {
+      await explain(
+        text('failedTitle'),
+        `${text('partial', { moved: error.moved })}\n\n${String(error.cause)}`,
+        'error',
+      )
+    } else {
+      await explain(
+        text('failedTitle'),
+        error instanceof Error ? error.message : String(error),
+        'error',
+      )
+    }
+    return { deleted: false }
+  } finally {
+    deletingSession = false
+    if (watcherPaused) watcher.start()
+  }
 })
 
 ipcMain.handle('spool:get-status', () => {
@@ -988,24 +1235,7 @@ ipcMain.handle('spool:get-runtime-info', () => {
   }
 })
 
-ipcMain.handle('spool:get-system-locale', () => {
-  // app.getLocale() can return tags like "zh-CN", "zh-Hans-CN", "zh-TW",
-  // "zh-Hant-HK". Normalize to one of Spool's supported locales — script
-  // subtag wins when present (zh-Hans → zh-CN, zh-Hant → zh-TW), otherwise
-  // fall back to region. Everything else lands on English.
-  const raw = app.getLocale().toLowerCase()
-  if (raw.startsWith('zh')) {
-    if (raw.includes('hans')) return 'zh-CN'
-    if (raw.includes('hant')) return 'zh-TW'
-    if (raw.includes('-tw') || raw.includes('-hk') || raw.includes('-mo')) return 'zh-TW'
-    return 'zh-CN'
-  }
-  if (raw.startsWith('ja')) return 'ja'
-  if (raw.startsWith('ko')) return 'ko'
-  if (raw.startsWith('de')) return 'de'
-  if (raw.startsWith('fr')) return 'fr'
-  return 'en'
-})
+ipcMain.handle('spool:get-system-locale', () => normalizeSystemLocale(app.getLocale()))
 
 ipcMain.handle('spool:sync-now', () => {
   return runSyncWorker()
@@ -1055,7 +1285,10 @@ ipcMain.handle('spool:force-resync-session', (_e, { sessionUuid }: { sessionUuid
 
 ipcMain.handle(
   'spool:resume-cli',
-  (_e, { sessionUuid, source, cwd }: { sessionUuid: string; source: string; cwd?: string }) => {
+  async (
+    _e,
+    { sessionUuid, source, cwd }: { sessionUuid: string; source: string; cwd?: string },
+  ) => {
     try {
       const command = getSessionResumeCommand(source, sessionUuid)
       if (!command) {
@@ -1071,7 +1304,7 @@ ipcMain.handle(
             filePath: '',
           })
       const terminal = acpManager.getAgentsConfig().terminal
-      openTerminal(command, terminal, resumeCwd)
+      await openTerminal(command, terminal, resumeCwd, acpManager.getAgentsConfig().customTerminals)
       return { ok: true }
     } catch (err) {
       console.error('[spool:resume-cli]', err)
@@ -1124,10 +1357,32 @@ ipcMain.handle('spool:ai-get-config', () => {
   return acpManager.getAgentsConfig()
 })
 
+ipcMain.handle('spool:terminals-discover', () => discoverTerminals())
+ipcMain.handle('spool:terminal-pick', async () => {
+  const text = nativeDialogText(acpManager.getAgentsConfig().language, app.getLocale())
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    title: text('chooseTerminal'),
+  })
+  return result.canceled ? null : (result.filePaths[0] ?? null)
+})
+ipcMain.handle('spool:terminal-test', async () => {
+  const config = acpManager.getAgentsConfig()
+  await openTerminal(
+    "printf '%s\\n' 'AgentHub terminal test OK'",
+    config.terminal,
+    undefined,
+    config.customTerminals,
+  )
+})
+
 ipcMain.handle(
   'spool:ai-set-config',
   (_e, { config }: { config: import('./acp.js').AgentsConfig }) => {
+    for (const terminal of config.customTerminals ?? []) validateCustomTerminal(terminal)
     acpManager.saveAgentsConfig(config)
+    Menu.setApplicationMenu(buildApplicationMenu())
+    updateTrayMenu()
     return { ok: true }
   },
 )

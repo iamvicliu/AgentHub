@@ -209,6 +209,12 @@ describe('locale key parity vs en.json', () => {
     'settings.security.backups_age_mo',
     'settings.security.backups_delete_result',
     'settings.security.backups_header_selected_size',
+    // Reading tools — the count is a bare number in parentheses after a
+    // fixed label ("Internal records (3)"); nothing around it inflects.
+    'session.internalLabel',
+    'session.showInternal',
+    'session.hideInternal',
+    'session.messageDirectory',
   ]
 
   it('every {{count}} interpolation in en.json either has _other or is in the allow-list snapshot', () => {

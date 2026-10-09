@@ -17,7 +17,7 @@ export const DB_PATH = join(SPOOL_DIR, 'spool.db')
  * Latest schema version the running build knows how to migrate to.
  * Bump in lockstep with the last `db.pragma('user_version = N')` in runMigrations.
  */
-export const LATEST_SCHEMA_VERSION = 15
+export const LATEST_SCHEMA_VERSION = 16
 
 let _db: Database.Database | null = null
 let _wasNewDb = false
@@ -87,7 +87,12 @@ export function runMigrations(db: Database.Database): void {
       ('codex',  '~/.codex/sessions'),
       ('gemini', '~/.gemini/tmp'),
       ('opencode', '~/.local/share/opencode/opencode.db'),
-      ('pi', '~/.pi/agent/sessions');
+      ('pi', '~/.pi/agent/sessions'),
+      ('hermes', '~/.hermes'),
+      ('openclaw', '~/.openclaw/agents'),
+      ('workbuddy', '~/.workbuddy/projects'),
+      ('dsh', '~/.dsh/sessions'),
+      ('cursor', '~/.cursor/projects');
 
     CREATE TABLE IF NOT EXISTS projects (
       id           INTEGER PRIMARY KEY,
@@ -736,6 +741,20 @@ export function runMigrations(db: Database.Database): void {
         ON published_shares_cache(draft_id) WHERE draft_id IS NOT NULL;
     `)
     db.pragma('user_version = 15')
+  }
+
+  if (version < 16) {
+    // v16: sessions.account — which account of the provider a session belongs
+    // to. WorkBuddy keeps several accounts in one home directory and AgentHub
+    // indexes all of them, so the list has to say which is which. Null for
+    // every other source, and for rows indexed before this column existed —
+    // the syncer backfills it the next time it syncs that session.
+    // Guarded so the migration is idempotent: tests roll `user_version` back
+    // and re-run migrations against an already-upgraded schema.
+    if (!columnExists(db, 'sessions', 'account')) {
+      db.exec('ALTER TABLE sessions ADD COLUMN account TEXT')
+    }
+    db.pragma('user_version = 16')
   }
 
   rebuildFtsTableIfEmpty(db, 'messages', 'messages_fts_trigram')

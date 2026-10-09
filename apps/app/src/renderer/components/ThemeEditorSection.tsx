@@ -7,6 +7,7 @@ import { THEME_PRESETS } from '../theme/editorTypes.js'
 import { lightPresetSeed, darkPresetSeed } from '../theme/presetSeeds.js'
 import Menu from './Menu.js'
 import SegmentedPill from './SegmentedPill.js'
+import { SettingsSectionHeading } from './SettingsSection.js'
 
 function colorInputValue(hex: string): string {
   const parsed = parseHex(hex)
@@ -340,9 +341,7 @@ export default function ThemeEditorSection(props: {
   return (
     <div className="mb-6">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h4 className="text-warm-faint dark:text-dark-muted text-[11px] font-medium tracking-[0.08em] uppercase">
-          {t('themeEditor.title')}
-        </h4>
+        <SettingsSectionHeading>{t('themeEditor.title')}</SettingsSectionHeading>
         <SegmentedPill
           value={themeSource}
           onChange={(value) => {

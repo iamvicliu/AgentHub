@@ -67,7 +67,7 @@ export default function PurgeConfirmDialog({
 
   if (!open) return null
 
-  const friendly = friendlyMaskName(kind)
+  const friendly = friendlyMaskName(kind, t)
   const afterValue = `[redacted: ${friendly}]`
   const beforePreview = before ? truncateValue(before) : undefined
   const showBeforeRow = Boolean(beforePreview && !bulk)
@@ -118,7 +118,7 @@ export default function PurgeConfirmDialog({
                 {t('security.purge_title_bulk_a', { defaultValue: 'Rewrite' })}{' '}
                 <span className="font-mono tabular-nums">{count}</span>{' '}
                 <span className="text-accent dark:text-accent-dark font-mono text-[15px]">
-                  {kind}
+                  {friendlyMaskName(kind, t)}
                 </span>{' '}
                 {t('security.purge_title_bulk_b', { defaultValue: 'findings?' })}
               </>

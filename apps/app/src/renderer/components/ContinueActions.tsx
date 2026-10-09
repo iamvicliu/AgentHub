@@ -1,10 +1,11 @@
 import type { FragmentResult } from '@spool-lab/core'
-import { MoreHorizontal, Eye, SquareTerminal, SquarePen, Copy, Loader2 } from 'lucide-react'
+import { MoreHorizontal, Eye, SquareTerminal, SquarePen, Copy, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionResumeCommand } from '../../shared/resumeCommand.js'
 import Menu from './Menu.js'
+import { requestSessionManagement } from './SessionManagement.js'
 
 type Props = {
   result: FragmentResult
@@ -49,6 +50,28 @@ export default function ContinueActions({
   }
 
   const menuItems = [
+    {
+      label: t('session.rename'),
+      icon: <SquarePen size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden />,
+      onSelect: () =>
+        requestSessionManagement({
+          uuid: result.sessionUuid,
+          source: result.source,
+          title: result.sessionTitle ?? '',
+          action: 'rename',
+        }),
+    },
+    {
+      label: t('session.delete'),
+      icon: <Trash2 size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden />,
+      onSelect: () =>
+        requestSessionManagement({
+          uuid: result.sessionUuid,
+          source: result.source,
+          title: result.sessionTitle ?? '',
+          action: 'delete',
+        }),
+    },
     {
       label: t('common.viewSession'),
       icon: <Eye size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden />,
@@ -117,7 +140,7 @@ export default function ContinueActions({
             event.stopPropagation()
             toggle()
           }}
-          className="text-warm-muted dark:text-dark-muted hover:text-warm-text dark:hover:text-dark-text hover:bg-warm-surface2 dark:hover:bg-dark-surface2 inline-flex h-5 w-5 flex-none items-center justify-center self-center rounded transition-colors"
+          className="text-warm-muted dark:text-dark-muted hover:text-warm-text dark:hover:text-dark-text hover:bg-warm-surface2 dark:hover:bg-dark-surface2 inline-flex h-10 w-10 flex-none items-center justify-center self-center rounded-md transition-colors"
         >
           <MoreHorizontal size={13} strokeWidth={ICON_STROKE} aria-hidden />
         </button>

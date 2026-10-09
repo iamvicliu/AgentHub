@@ -13,7 +13,7 @@ describe('Electron dev launch plan', () => {
   })
 
   test('uses a path-safe executable name for packaged apps', () => {
-    expect(appPackage.build.executableName).toBe('Spool')
+    expect(appPackage.build.executableName).toBe('AgentHub')
   })
 
   test('builds isolated worker entries before starting Electron', () => {

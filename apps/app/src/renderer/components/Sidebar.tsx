@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import {
   DEFAULT_PINNED_SORT_ORDER,
@@ -466,6 +467,21 @@ function SidebarStatus({
   const { t } = useTranslation()
   const text = getSyncStatusText(syncStatus, status, t as unknown as StatusT)
   const isOk = !syncStatus || syncStatus.phase === 'done'
+  const [isSyncingManually, setIsSyncingManually] = useState(false)
+  const canSync = isOk && !isSyncingManually
+  const handleSync = async () => {
+    if (!canSync) return
+    setIsSyncingManually(true)
+    try {
+      await window.spool.syncNow()
+    } catch (error) {
+      toast.error(t('status.syncFailed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsSyncingManually(false)
+    }
+  }
 
   return (
     <div className="flex h-[30px] flex-none items-center gap-2 pr-2 pl-4">
@@ -473,14 +489,17 @@ function SidebarStatus({
         <span
           className={`h-1.5 w-1.5 flex-none rounded-full ${isOk ? 'bg-status-success dark:bg-status-success-dark' : 'bg-status-warning dark:bg-status-warning-dark animate-pulse'}`}
         />
-        <span
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={!canSync}
           data-testid="status-text"
           data-session-count={status?.totalSessions ?? 0}
           className="text-warm-faint dark:text-dark-muted truncate font-mono text-[11px]"
-          title={text}
+          title={t('status.syncNow')}
         >
-          {text}
-        </span>
+          {isSyncingManually ? t('status.scanning') : text}
+        </button>
       </div>
       {onSettingsClick && (
         <IconButton
@@ -922,18 +941,22 @@ function PinnedRow({
                   },
                 ]
               : []),
-            {
-              label: resuming ? t('common.loading') : t('session.resume_inTerminal'),
-              icon: resuming ? (
-                <Loader2 size={14} strokeWidth={1.6} className="animate-spin" aria-hidden />
-              ) : (
-                <SquareTerminal size={14} strokeWidth={1.6} aria-hidden />
-              ),
-              onSelect: () => {
-                void handleResume()
-              },
-              disabled: resuming,
-            },
+            ...(resumeCommand
+              ? [
+                  {
+                    label: resuming ? t('common.loading') : t('session.resume_inTerminal'),
+                    icon: resuming ? (
+                      <Loader2 size={14} strokeWidth={1.6} className="animate-spin" aria-hidden />
+                    ) : (
+                      <SquareTerminal size={14} strokeWidth={1.6} aria-hidden />
+                    ),
+                    onSelect: () => {
+                      void handleResume()
+                    },
+                    disabled: resuming,
+                  },
+                ]
+              : []),
             ...(resumeCommand
               ? [
                   {

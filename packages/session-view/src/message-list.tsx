@@ -34,7 +34,9 @@ interface Props {
   activeMatchIndex?: number
   onActiveMatchRef?: (node: HTMLElement | null) => void
   targetMessageId?: number | null
+  startAtEnd?: boolean
   showTargetHighlight?: boolean
+  onTargetVisible?: () => void
   /** Localized strings; defaults are English. */
   labels?: MessageListLabels
   /** BCP-47 locale for dates/times; defaults to the browser locale. */
@@ -199,6 +201,16 @@ function formatRowTime(iso: string, locale: string | undefined): string {
 
 const EMPTY_FIND_RANGES = new Map<number, MatchState>()
 
+export function initialMessagePosition(
+  rowCount: number,
+  targetIndex: number | undefined,
+  startAtEnd: boolean,
+) {
+  if (targetIndex !== undefined) return { index: targetIndex, align: 'center' as const }
+  if (startAtEnd && rowCount > 0) return { index: rowCount - 1, align: 'end' as const }
+  return undefined
+}
+
 const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
   {
     messages,
@@ -209,13 +221,36 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
     activeMatchIndex = -1,
     onActiveMatchRef = () => {},
     targetMessageId,
+    startAtEnd = false,
     showTargetHighlight = false,
+    onTargetVisible,
     labels = DEFAULT_LABELS,
     locale,
   },
   ref,
 ) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
+  const targetObserver = useRef<IntersectionObserver | null>(null)
+  const notifiedTarget = useRef<number | null>(null)
+  const observeTarget = useCallback(
+    (node: HTMLElement | null) => {
+      targetObserver.current?.disconnect()
+      if (!node || !onTargetVisible || targetMessageId == null) return
+      targetObserver.current = new IntersectionObserver((entries) => {
+        if (
+          !entries.some((entry) => entry.isIntersecting) ||
+          notifiedTarget.current === targetMessageId
+        )
+          return
+        notifiedTarget.current = targetMessageId
+        onTargetVisible()
+        targetObserver.current?.disconnect()
+      })
+      targetObserver.current.observe(node)
+    },
+    [onTargetVisible, targetMessageId],
+  )
+  useEffect(() => () => targetObserver.current?.disconnect(), [])
   const [expandedSidechains, setExpandedSidechains] = useState<Set<string>>(() => new Set())
   const [virtuosoScroller, setVirtuosoScroller] = useState<HTMLElement | null>(null)
   const [scrollbarSyncNonce, setScrollbarSyncNonce] = useState(0)
@@ -253,9 +288,11 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
   // this component (parent should pass `key={sessionUuid}`), which re-engages
   // initialTopMostItemIndex with the fresh target.
   const initialIndex = useMemo(() => {
-    if (targetMessageId == null) return undefined
-    const idx = idToRowIndex.get(targetMessageId)
-    return idx == null ? undefined : { index: idx, align: 'center' as const }
+    return initialMessagePosition(
+      rows.length,
+      targetMessageId == null ? undefined : idToRowIndex.get(targetMessageId),
+      startAtEnd,
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -265,10 +302,14 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
       scrollToMessageId(id) {
         const idx = idToRowIndex.get(id)
         if (idx == null) return
+        const row = rows[idx]
+        if (row?.kind === 'sidechain') {
+          setExpandedSidechains((current) => new Set(current).add(row.key))
+        }
         virtuosoRef.current?.scrollIntoView({ index: idx, align: 'center', behavior: 'auto' })
       },
     }),
-    [idToRowIndex],
+    [idToRowIndex, rows],
   )
 
   // Custom scrollbar maps thumb position → row index → Virtuoso scrollToIndex.
@@ -370,6 +411,7 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
                 return (
                   <div
                     key={message.id}
+                    ref={isTarget ? observeTarget : undefined}
                     data-message-id={message.id}
                     {...(isTarget ? { 'data-testid': 'target-message' } : {})}
                     {...(isTarget && showTargetHighlight ? { 'data-highlighted': '1' } : {})}
@@ -378,6 +420,8 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
                     }`}
                   >
                     <MessageBubble
+                      userLabel={labels.user}
+                      agentLabel={labels.agent}
                       message={message}
                       isDark={isDark}
                       showAvatar={shouldShowAvatarInGroup(row.messages, messageIndex)}
@@ -406,6 +450,7 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
     return (
       <div
         data-index={index}
+        ref={isTarget ? observeTarget : undefined}
         data-message-id={msg.id}
         {...(isTarget ? { 'data-testid': 'target-message' } : {})}
         {...(isTarget && showTargetHighlight ? { 'data-highlighted': '1' } : {})}
@@ -414,6 +459,8 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
         }`}
       >
         <MessageBubble
+          userLabel={labels.user}
+          agentLabel={labels.agent}
           message={msg}
           isDark={isDark}
           showAvatar={row.showAvatar}

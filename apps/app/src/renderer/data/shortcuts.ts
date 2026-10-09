@@ -23,36 +23,20 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     id: 'global',
     shortcuts: [
       { id: 'search', combo: 'mod+k' },
-      { id: 'toggleSidebar', combo: 'mod+b' },
+      { id: 'settings', combo: 'mod+,' },
     ],
   },
   {
     id: 'search',
-    shortcuts: [
-      { id: 'navigate', combo: 'arrowup,arrowdown' },
-      { id: 'open', combo: 'enter' },
-      { id: 'runQuery', combo: 'shift+enter' },
-      { id: 'toggleScope', combo: 'tab' },
-      { id: 'close', combo: 'escape' },
-    ],
+    shortcuts: [{ id: 'close', combo: 'escape' }],
   },
   {
     id: 'session',
     shortcuts: [
       { id: 'find', combo: 'mod+f' },
-      { id: 'prevNextMatch', combo: 'mod+arrowleft,mod+arrowright' },
+      { id: 'prevNextMatch', combo: 'mod+shift+g,mod+g' },
+      { id: 'back', combo: 'mod+[,alt+arrowleft' },
       { id: 'closeFind', combo: 'escape' },
-    ],
-  },
-  {
-    id: 'shareEditor',
-    shortcuts: [
-      { id: 'undo', combo: 'mod+z' },
-      { id: 'redo', combo: 'mod+shift+z' },
-      { id: 'zoomIn', combo: 'mod+plus' },
-      { id: 'zoomOut', combo: 'mod+minus' },
-      { id: 'zoomFit', combo: 'mod+0' },
-      { id: 'pan', combo: 'space' },
     ],
   },
 ]
@@ -107,6 +91,7 @@ export function formatComboParts(combo: string, isMac: boolean): string[] {
 }
 
 export function splitAlternatives(combo: string): string[] {
+  if (combo.endsWith('+,')) return [combo]
   return combo
     .split(',')
     .map((c) => c.trim())

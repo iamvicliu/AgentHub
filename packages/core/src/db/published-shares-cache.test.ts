@@ -64,10 +64,10 @@ describe('published_shares_cache schema (v15)', () => {
     expect(names).toContain('idx_published_shares_cache_draft_id')
   })
 
-  it('user_version reaches 15 after migration', async () => {
+  it('user_version reaches 16 after migration', async () => {
     const { db } = await load()
     const v = (db.pragma('user_version') as Array<{ user_version: number }>)[0]?.user_version
-    expect(v).toBe(15)
+    expect(v).toBe(16)
   })
 
   it('upsertMany inserts new rows and listAll returns them by published_at desc', async () => {

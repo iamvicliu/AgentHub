@@ -54,6 +54,7 @@ export async function spawnScanWorker(
   const pending = new Map<number, PendingCommand>()
   let nextReqId = 1
   let seenFirstStatus = false
+  let exitError: Error | null = null
   let lastStatus: ScanStatus = {
     queued: 0,
     scanning: null,
@@ -80,6 +81,7 @@ export async function spawnScanWorker(
   }
 
   function send<T>(payload: ScanCommand): Promise<T> {
+    if (exitError) return Promise.reject(exitError)
     const reqId = nextReqId++
     return new Promise<T>((resolve, reject) => {
       pending.set(reqId, { resolve: resolve as (v: unknown) => void, reject })
@@ -102,6 +104,7 @@ export async function spawnScanWorker(
     const timeout = setTimeout(() => {
       worker.off('message', onMessage)
       worker.off('error', onError)
+      worker.off('exit', onBootExit)
       // Best-effort terminate; if it's already dead this is a no-op.
       worker.terminate().catch(() => {
         /* nothing to do */
@@ -112,6 +115,7 @@ export async function spawnScanWorker(
       clearTimeout(timeout)
       worker.off('message', onMessage)
       worker.off('error', onError)
+      worker.off('exit', onBootExit)
     }
     function onMessage(msg: FromWorker): void {
       if (msg.type === 'ready') {
@@ -134,8 +138,13 @@ export async function spawnScanWorker(
       clear()
       reject(err)
     }
+    function onBootExit(code: number): void {
+      clear()
+      reject(new Error(`scan worker exited before ready (code=${code})`))
+    }
     worker.on('message', onMessage)
     worker.on('error', onError)
+    worker.on('exit', onBootExit)
   })
 
   function onSteadyState(msg: FromWorker): void {
@@ -196,6 +205,7 @@ export async function spawnScanWorker(
     // Reject anything still in flight so renderer IPC handlers don't
     // hang forever on a dead worker.
     const err = new Error(`scan worker thread exited (code=${code})`)
+    exitError = err
     for (const slot of pending.values()) slot.reject(err)
     pending.clear()
   }
@@ -212,14 +222,20 @@ export async function spawnScanWorker(
     // before the first push lands (boolean sentinel because an empty
     // profile string is a valid future value).
     getStatus: Effect.suspend(() =>
-      seenFirstStatus
-        ? Effect.succeed(lastStatus)
-        : Effect.promise(() => send<ScanStatus>({ cmd: 'getStatus' })),
+      exitError
+        ? Effect.die(exitError)
+        : seenFirstStatus
+          ? Effect.succeed(lastStatus)
+          : Effect.promise(() => send<ScanStatus>({ cmd: 'getStatus' })),
     ),
     changes: Stream.fromPubSub(changes),
     statusChanges: Stream.fromPubSub(statusChanges),
     shutdown: () =>
       new Promise<void>((resolve) => {
+        if (exitError) {
+          resolve()
+          return
+        }
         worker.once('exit', () => resolve())
         try {
           worker.postMessage({ type: 'shutdown' } satisfies ToWorker)

@@ -6,7 +6,7 @@ import { stripSpoolSystemPrelude } from './spool-prelude.js'
 
 // v1: initial pi support — session header + message records from
 // ~/.pi/agent/sessions/<cwd-slug>/<timestamp>_<uuid>.jsonl.
-export const PI_INDEX_VERSION = 'pi-v1-session-search-fts'
+export const PI_INDEX_VERSION = 'pi-v2-session-info-title'
 
 interface PiContentBlock {
   type?: string
@@ -27,6 +27,7 @@ interface PiRecord {
   timestamp?: string
   cwd?: string
   modelId?: string
+  name?: string
   message?: PiMessagePayload
 }
 
@@ -46,6 +47,7 @@ export function loadPiSession(filePath: string): ParseSessionResult {
   let cwd = ''
   let headerStartedAt = ''
   let model = ''
+  let sessionName = ''
   const messages: ParsedMessage[] = []
 
   for (const line of raw.split('\n')) {
@@ -58,6 +60,8 @@ export function loadPiSession(filePath: string): ParseSessionResult {
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
     const record = parsed as PiRecord
+    if (record.type === 'session_info' && typeof record.name === 'string')
+      sessionName = record.name.trim()
 
     if (record.type === 'session') {
       if (typeof record.id === 'string') sessionUuid = record.id
@@ -104,7 +108,7 @@ export function loadPiSession(filePath: string): ParseSessionResult {
   const firstUserMessage = messages.find(
     (message) => message.role === 'user' && message.contentText.trim().length > 0,
   )
-  const title = firstUserMessage?.contentText.trim().slice(0, 120) || '(no title)'
+  const title = sessionName || firstUserMessage?.contentText.trim().slice(0, 120) || '(no title)'
 
   return {
     kind: 'parsed',

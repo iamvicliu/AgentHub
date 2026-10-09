@@ -8,9 +8,16 @@ type Props = {
   pinned: boolean
   onChange?: (pinned: boolean) => void
   size?: 'sm' | 'md'
+  showLabel?: boolean
 }
 
-export default function PinButton({ sessionUuid, pinned, onChange, size = 'sm' }: Props) {
+export default function PinButton({
+  sessionUuid,
+  pinned,
+  onChange,
+  size = 'sm',
+  showLabel = false,
+}: Props) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
 
@@ -33,7 +40,7 @@ export default function PinButton({ sessionUuid, pinned, onChange, size = 'sm' }
     }
   }
 
-  const dim = size === 'md' ? 'w-8 h-8' : 'w-6 h-6'
+  const dim = showLabel ? 'min-h-11 gap-2 px-3 text-sm' : size === 'md' ? 'w-11 h-11' : 'w-10 h-10'
   const icon = size === 'md' ? 16 : 13
 
   return (
@@ -47,8 +54,8 @@ export default function PinButton({ sessionUuid, pinned, onChange, size = 'sm' }
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') void toggle(event)
       }}
-      title={pinned ? t('sidebar.unpinFromProject') : t('sidebar.pinToProject')}
-      aria-label={pinned ? t('sidebar.unpinFromProject') : t('sidebar.pinToProject')}
+      title={`${pinned ? t('sidebar.unpin') : t('sidebar.pin')} — ${t('session.pin_help')}`}
+      aria-label={pinned ? t('sidebar.unpin') : t('sidebar.pin')}
       aria-pressed={pinned}
       className={`inline-flex items-center justify-center ${dim} rounded transition-colors ${
         pinned
@@ -58,6 +65,7 @@ export default function PinButton({ sessionUuid, pinned, onChange, size = 'sm' }
       disabled={busy}
     >
       <PinIcon size={icon} filled={pinned} />
+      {showLabel && <span>{pinned ? t('sidebar.unpin') : t('sidebar.pin')}</span>}
     </button>
   )
 }

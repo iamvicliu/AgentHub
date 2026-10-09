@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vite-plus/test'
 
-import { snippetToStrongHtml } from './snippet.js'
+import { highlightTitleHtml, snippetToStrongHtml } from './snippet.js'
+
+describe('title highlights', () => {
+  it('highlights Chinese and case-insensitive repeated terms', () => {
+    expect(highlightTitleHtml('开发-Spool spool', '开发 spool')).toBe(
+      '<strong>开发</strong>-<strong>Spool</strong> <strong>spool</strong>',
+    )
+  })
+  it('escapes title markup and treats regex symbols literally', () => {
+    expect(highlightTitleHtml('<script>a+b</script>', 'a+b')).toBe(
+      '&lt;script&gt;<strong>a+b</strong>&lt;/script&gt;',
+    )
+    expect(highlightTitleHtml('<b>', '')).toBe('&lt;b&gt;')
+  })
+})
 
 describe('snippetToStrongHtml', () => {
   it('rewrites mark highlights to strong', () => {

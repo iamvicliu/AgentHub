@@ -13,8 +13,8 @@ import { useTranslation } from 'react-i18next'
 import { formatRelativeDate } from '../../shared/formatDate.js'
 import { PROJECT_SORT_OPTIONS } from '../../shared/projectView.js'
 import { insertSessionSorted } from '../../shared/sessionSort.js'
-import { getSessionSourceColor, getSessionSourceLabel } from '../../shared/sessionSources.js'
 import { securityApi } from '../api/security.js'
+import AgentSourceFilter from './AgentSourceFilter.js'
 import Menu from './Menu.js'
 import VirtualSessionList, { type SessionListRow } from './VirtualSessionList.js'
 
@@ -56,7 +56,7 @@ export default function ProjectView({
   const [directoryCounts, setDirectoryCounts] = useState<DirectoryCount[]>([])
   const [cursor, setCursor] = useState<SessionsCursor | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [activeSources, setActiveSources] = useState<Set<SessionSource>>(new Set())
+  const [activeSource, setActiveSource] = useState<SessionSource | null>(null)
   const [isolatedCwd, setIsolatedCwd] = useState<string | null>(null)
   const [scanRefreshKey, setScanRefreshKey] = useState(0)
   const fetchTokenRef = useRef(0)
@@ -100,7 +100,7 @@ export default function ProjectView({
   }, [])
 
   useEffect(() => {
-    setActiveSources(new Set())
+    setActiveSource(null)
     setIsolatedCwd(null)
   }, [identityKey])
 
@@ -125,7 +125,7 @@ export default function ProjectView({
     setSessions(null)
     setCursor(null)
     setLoadingMore(false)
-    const sourcesArray = Array.from(activeSources)
+    const sourcesArray = activeSource ? [activeSource] : []
     const sharedOptions = sourcesArray.length > 0 ? { sources: sourcesArray } : {}
     Promise.all([
       window.spool.listPinnedSessionsByIdentity(identityKey),
@@ -155,14 +155,14 @@ export default function ProjectView({
         setSessions([])
         setDirectoryCounts([])
       })
-  }, [identityKey, sortOrder, activeSources, scanRefreshKey])
+  }, [identityKey, sortOrder, activeSource, scanRefreshKey])
 
   const cursorRef = useRef(cursor)
   cursorRef.current = cursor
   const loadingRef = useRef(loadingMore)
   loadingRef.current = loadingMore
-  const fetchArgsRef = useRef({ identityKey, sortOrder, activeSources })
-  fetchArgsRef.current = { identityKey, sortOrder, activeSources }
+  const fetchArgsRef = useRef({ identityKey, sortOrder, activeSource })
+  fetchArgsRef.current = { identityKey, sortOrder, activeSource }
   const pinnedSessionsRef = useRef<Session[]>([])
   pinnedSessionsRef.current = pinnedSessions
   const pinnedUuidsRef = useRef(new Set<string>())
@@ -174,8 +174,8 @@ export default function ProjectView({
     // list — otherwise sidebar/menu-driven unpins make sessions vanish
     // from this view.
     function handlePinEvent() {
-      const { identityKey: key, sortOrder: order, activeSources: srcs } = fetchArgsRef.current
-      const sourcesArray = Array.from(srcs)
+      const { identityKey: key, sortOrder: order, activeSource: source } = fetchArgsRef.current
+      const sourcesArray = source ? [source] : []
       window.spool
         .listPinnedSessionsByIdentity(key)
         .then((pinned) => {
@@ -216,8 +216,8 @@ export default function ProjectView({
     // title/oldest/message_count), so a merge would be misleading.
     const off = window.spool.onNewSessions(() => {
       if (loadingRef.current) return
-      const { identityKey: key, sortOrder: order, activeSources: srcs } = fetchArgsRef.current
-      const sourcesArray = Array.from(srcs)
+      const { identityKey: key, sortOrder: order, activeSource: source } = fetchArgsRef.current
+      const sourcesArray = source ? [source] : []
       window.spool
         .listProjectDirectoryCounts(key, sourcesArray.length > 0 ? sourcesArray : undefined)
         .then(setDirectoryCounts)
@@ -252,8 +252,8 @@ export default function ProjectView({
     if (loadingRef.current || !cursorRef.current) return
     const token = ++fetchTokenRef.current
     setLoadingMore(true)
-    const { identityKey: key, sortOrder: order, activeSources: srcs } = fetchArgsRef.current
-    const sourcesArray = Array.from(srcs)
+    const { identityKey: key, sortOrder: order, activeSource: source } = fetchArgsRef.current
+    const sourcesArray = source ? [source] : []
     window.spool
       .listSessionsByIdentity(key, {
         sortOrder: order,
@@ -300,7 +300,6 @@ export default function ProjectView({
     }
   }
 
-  const availableSources = group?.sources ?? []
   const displayPath = useMemo(() => {
     return pinnedSessions[0]?.projectDisplayPath ?? sessions?.[0]?.projectDisplayPath ?? null
   }, [pinnedSessions, sessions])
@@ -352,15 +351,6 @@ export default function ProjectView({
     return { count: group.sessionCount, lastActivity, sources: group.sources }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group, i18n.language])
-
-  function toggleSource(source: SessionSource) {
-    setActiveSources((prev) => {
-      const next = new Set(prev)
-      if (next.has(source)) next.delete(source)
-      else next.add(source)
-      return next
-    })
-  }
 
   // When the user isolates to one cwd we filter client-side, so the
   // footer count must reflect what's actually visible — otherwise the
@@ -465,46 +455,11 @@ export default function ProjectView({
               {meta.sources.length > 0 && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    {meta.sources.map((src) => {
-                      const isInteractive = availableSources.length > 1
-                      const active = activeSources.has(src)
-                      const noFilter = activeSources.size === 0
-                      const visualActive = noFilter || active
-                      const content = (
-                        <>
-                          <span
-                            aria-hidden
-                            className="h-1.5 w-1.5 flex-none rounded-full"
-                            style={{ background: getSessionSourceColor(src) }}
-                          />
-                          <span>{getSessionSourceLabel(src)}</span>
-                        </>
-                      )
-                      if (!isInteractive) {
-                        return (
-                          <span key={src} className="flex items-center gap-1">
-                            {content}
-                          </span>
-                        )
-                      }
-                      return (
-                        <button
-                          key={src}
-                          type="button"
-                          data-testid="source-filter-pill"
-                          data-source={src}
-                          aria-pressed={active}
-                          onClick={() => toggleSource(src)}
-                          className={`hover:text-warm-text dark:hover:text-dark-text flex items-center gap-1 rounded transition-opacity ${
-                            visualActive ? 'opacity-100' : 'opacity-40'
-                          } ${active ? 'text-warm-text dark:text-dark-text' : ''}`}
-                        >
-                          {content}
-                        </button>
-                      )
-                    })}
-                  </span>
+                  <AgentSourceFilter
+                    sources={meta.sources}
+                    selected={activeSource}
+                    onSelect={setActiveSource}
+                  />
                 </>
               )}
             </p>
@@ -565,10 +520,10 @@ export default function ProjectView({
         <div className="px-4 py-12 text-center">
           <p className="text-warm-muted dark:text-dark-muted text-sm">{t('project.noSessions')}</p>
           <div className="mt-2 flex items-center justify-center gap-3 text-xs">
-            {activeSources.size > 0 && (
+            {activeSource !== null && (
               <button
                 type="button"
-                onClick={() => setActiveSources(new Set())}
+                onClick={() => setActiveSource(null)}
                 className="text-accent hover:underline"
               >
                 {t('project.clearSourceFilter')}

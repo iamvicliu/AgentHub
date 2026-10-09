@@ -5,7 +5,7 @@ import { dispatchDeepLink } from './deep-link.js'
 const opened: string[] = []
 
 // Simulate the user completing AuthKit sign-in: the browser redirects
-// to spool://auth/callback, which the OS hands to the deep-link
+// to agenthub://auth/callback, which the OS hands to the deep-link
 // dispatcher. Deferred a tick so the flow is already awaiting the
 // callback (mirrors reality; also exercises subscribe-before-open
 // ordering). Hoisted function declaration so both the vi.mock factory
@@ -14,7 +14,7 @@ async function approveInBrowser(url: string): Promise<void> {
   opened.push(url)
   const state = new URL(url).searchParams.get('state')!
   queueMicrotask(() => {
-    dispatchDeepLink(`spool://auth/callback?code=AUTHCODE&state=${state}`)
+    dispatchDeepLink(`agenthub://auth/callback?code=AUTHCODE&state=${state}`)
   })
 }
 
@@ -41,7 +41,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-describe('signInWithWorkos (PKCE + spool:// callback orchestrator)', () => {
+describe('signInWithWorkos (PKCE + agenthub:// callback orchestrator)', () => {
   beforeEach(async () => {
     opened.length = 0
     process.env['SPOOL_WORKOS_CLIENT_ID'] = 'client_test_123'
@@ -95,7 +95,7 @@ describe('signInWithWorkos (PKCE + spool:// callback orchestrator)', () => {
     expect(auth.searchParams.get('client_id')).toBe('client_test_123')
     expect(auth.searchParams.get('provider')).toBe('authkit')
     expect(auth.searchParams.get('response_type')).toBe('code')
-    expect(auth.searchParams.get('redirect_uri')).toBe('spool://auth/callback')
+    expect(auth.searchParams.get('redirect_uri')).toBe('agenthub://auth/callback')
     expect(auth.searchParams.get('code_challenge_method')).toBe('S256')
     expect(auth.searchParams.get('code_challenge')).toBeTruthy()
 
@@ -114,10 +114,10 @@ describe('signInWithWorkos (PKCE + spool:// callback orchestrator)', () => {
       const state = new URL(url).searchParams.get('state')!
       queueMicrotask(() => {
         // Stale callback from an abandoned attempt — must be ignored.
-        dispatchDeepLink('spool://auth/callback?code=STALE&state=not-ours')
+        dispatchDeepLink('agenthub://auth/callback?code=STALE&state=not-ours')
         // The real callback carries an explicit provider error.
         dispatchDeepLink(
-          `spool://auth/callback?error=access_denied&error_description=User+cancelled&state=${state}`,
+          `agenthub://auth/callback?error=access_denied&error_description=User+cancelled&state=${state}`,
         )
       })
     })

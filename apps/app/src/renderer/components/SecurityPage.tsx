@@ -22,12 +22,7 @@ import type {
   SessionWithFindingCounts,
   Session,
 } from '@spool-lab/core'
-import {
-  HIGH_SEVERITY_KINDS,
-  INFO_SEVERITY_KINDS,
-  SENSITIVE_KIND_LABEL,
-  type SensitiveKind,
-} from '@spool-lab/redact'
+import { HIGH_SEVERITY_KINDS, INFO_SEVERITY_KINDS, type SensitiveKind } from '@spool-lab/redact'
 import {
   AlertTriangle,
   Check,
@@ -62,7 +57,7 @@ import Menu from './Menu.js'
 import AllowlistManageModal from './security/AllowlistManageModal.js'
 import BlastRadius from './security/BlastRadius.js'
 import DetectorsChip from './security/DetectorsChip.js'
-import { compactModel } from './security/format.js'
+import { compactModel, friendlyMaskName } from './security/format.js'
 import {
   AMBIENT_BANNER_THRESHOLD,
   scanInFlightCount,
@@ -70,12 +65,13 @@ import {
 } from './security/page-helpers.js'
 import { parseQualifier, toggleKindQualifier } from './security/parse-qualifier.js'
 import PurgeConfirmDialog from './security/PurgeConfirmDialog.js'
+import SecurityIntroduction from './security/SecurityIntroduction.js'
 import { truncateValue } from './security/truncate-value.js'
 
 interface Props {
   onOpenSession: (sessionUuid: string) => void
   /** Share-draft starter; rendered as a menu item. */
-  onShareSession: (sessionUuid: string) => void
+  onShareSession?: (sessionUuid: string) => void
   /** Open Settings panel pre-focused on the Security tab. Wired from
    *  App.tsx; used by the EmptyState "Detector settings" affordance so
    *  a clean archive isn't a dead end. */
@@ -597,6 +593,9 @@ function SecurityPageInner({ onOpenSession, onShareSession, onOpenSettings }: Pr
 
   return (
     <div data-testid="security-page" className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-none px-6 pb-3">
+        <SecurityIntroduction />
+      </div>
       {/* Meta row — matches SharesPage's pattern (px-6 pt-1.5 pb-3) so
        *  the distance from the sidebar reads identical across pages. */}
       <div className="flex-none px-6 pt-1.5 pb-3">
@@ -939,7 +938,7 @@ function SecurityPageInner({ onOpenSession, onShareSession, onOpenSettings }: Pr
                         activeKinds={activeKinds}
                         valuesHidden={valuesHidden}
                         onOpen={() => onOpenSession(s.sessionUuid)}
-                        onShare={() => onShareSession(s.sessionUuid)}
+                        onShare={onShareSession ? () => onShareSession(s.sessionUuid) : undefined}
                         onRefresh={refresh}
                       />
                     ))}
@@ -1204,6 +1203,7 @@ function CollapsibleHeader({
    *  without making the user expand it. */
   preview?: { rows: RiskByCategoryRow[]; visibleN?: number }
 }) {
+  const { t } = useTranslation()
   const visibleN = preview?.visibleN ?? 3
   const previewRows = preview?.rows.slice(0, visibleN) ?? []
   const previewMore = preview ? Math.max(0, preview.rows.length - visibleN) : 0
@@ -1233,7 +1233,9 @@ function CollapsibleHeader({
             {previewRows.map((r, i) => (
               <span key={r.kind}>
                 {i > 0 && <span className="opacity-50"> · </span>}
-                <span className="text-warm-muted dark:text-dark-muted">{r.kind} </span>
+                <span className="text-warm-muted dark:text-dark-muted">
+                  {friendlyMaskName(r.kind, t)}{' '}
+                </span>
                 <span className="tabular-nums">{r.count}</span>
               </span>
             ))}
@@ -1329,7 +1331,7 @@ function KindTile({
       tabIndex={0}
       aria-pressed={active}
       aria-label={t('security.chip_aria', {
-        kind,
+        kind: friendlyMaskName(kind, t),
         count,
         sessions,
         defaultValue: '{{kind}} · {{count}} findings in {{sessions}} sessions',
@@ -1342,7 +1344,7 @@ function KindTile({
       }}
     >
       <span className="text-warm-text dark:text-dark-text truncate font-mono text-[12px]">
-        {kind}
+        {friendlyMaskName(kind, t)}
       </span>
       <span className="flex min-w-0 items-baseline justify-between gap-2">
         <span
@@ -1357,8 +1359,14 @@ function KindTile({
       <button
         type="button"
         data-testid="risk-bulk-purge"
-        title={t('security.purge_all_kind', { kind, defaultValue: 'Purge all {{kind}}' })}
-        aria-label={t('security.purge_all_kind', { kind, defaultValue: 'Purge all {{kind}}' })}
+        title={t('security.purge_all_kind', {
+          kind: friendlyMaskName(kind, t),
+          defaultValue: 'Purge all {{kind}}',
+        })}
+        aria-label={t('security.purge_all_kind', {
+          kind: friendlyMaskName(kind, t),
+          defaultValue: 'Purge all {{kind}}',
+        })}
         onClick={(e) => {
           e.stopPropagation()
           onBulkPurge()
@@ -1383,7 +1391,7 @@ function SessionCard({
   activeKinds: readonly string[]
   valuesHidden: boolean
   onOpen: () => void
-  onShare: () => void
+  onShare?: (() => void) | undefined
   onRefresh: () => void
 }) {
   const { t } = useTranslation()
@@ -1736,7 +1744,9 @@ function SessionCard({
         {session.projectDisplayName && (
           <>
             <span className="text-warm-muted dark:text-dark-muted">
-              {session.projectDisplayName}
+              {session.projectDisplayName === 'Loose'
+                ? t('security.no_project')
+                : session.projectDisplayName}
             </span>
             {' · '}
           </>
@@ -1837,7 +1847,7 @@ function FindingItem({
     // soft undo, not a modal). Sonner's 4s default is fine for one-
     // hand workflows; users mass-dismissing a kind can mash-undo as
     // toasts stack.
-    const kindLabel = SENSITIVE_KIND_LABEL[finding.kind as SensitiveKind] ?? finding.kind
+    const kindLabel = friendlyMaskName(finding.kind, t)
     toast(
       scope === 'global'
         ? t('security.dismissed_global_toast', {
@@ -1893,7 +1903,7 @@ function FindingItem({
       : 'text-warm-text dark:text-dark-text blur-[3.5px] cursor-pointer select-none'
 
   const displayValue = isPurged
-    ? `[redacted: ${SENSITIVE_KIND_LABEL[finding.kind as SensitiveKind] ?? finding.kind}]`
+    ? t('security.redacted_kind', { kind: friendlyMaskName(finding.kind, t) })
     : value === null
       ? t('security.value_unavailable', { defaultValue: '(value unavailable)' })
       : value
@@ -1913,7 +1923,12 @@ function FindingItem({
         }}
       >
         <span className={`h-1 w-1 justify-self-center rounded-full ${bulletClass}`} />
-        <span className="text-warm-muted dark:text-dark-muted truncate">{finding.kind}</span>
+        <span
+          className="text-warm-muted dark:text-dark-muted truncate font-sans"
+          title={finding.kind}
+        >
+          {friendlyMaskName(finding.kind, t)}
+        </span>
         <div data-testid="finding-value-cell" className="flex min-w-0 items-center gap-2">
           <span
             data-testid="finding-value"
@@ -2022,7 +2037,7 @@ function FindingItem({
           </span>
         ) : (
           <span className="text-warm-faint dark:text-dark-muted absolute inset-y-0 right-2 flex items-center font-sans text-[10px] font-semibold tracking-[0.08em] uppercase">
-            {finding.state}
+            {t(`security.finding_states.${finding.state}`, { defaultValue: finding.state })}
           </span>
         )}
         <PurgeConfirmDialog
@@ -2137,7 +2152,7 @@ function EmptyState({
                   })}
                 </div>
               )}
-              {currentProfile && <div>{currentProfile}</div>}
+              {currentProfile && <DetectorsChip profile={currentProfile} />}
             </div>
           </div>
         )}

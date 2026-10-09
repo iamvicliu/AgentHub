@@ -375,6 +375,16 @@
   color: var(--sp-source-pi);
 }
 
+.sp-badge--source-hermes {
+  border-color: var(--sp-source-hermes);
+  color: var(--sp-source-hermes);
+}
+
+.sp-badge--source-openclaw {
+  border-color: var(--sp-source-openclaw);
+  color: var(--sp-source-openclaw);
+}
+
 .sp-badge--success {
   border-color: var(--sp-success);
   color: var(--sp-success);

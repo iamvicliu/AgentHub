@@ -58,6 +58,7 @@ export interface ToolCallEvent {
 
 /** User-facing config stored in ~/.spool/agents.json */
 export interface AgentsConfig {
+  customTerminals?: import('../shared/customTerminal.js').CustomTerminal[]
   /** Which agent to use by default in AI mode */
   defaultAgent?: string
   /** Which sort order to use by default in search results */

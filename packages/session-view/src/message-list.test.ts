@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vite-plus/test'
 
-import { buildRows, makeDividerLabel } from './message-list.js'
+import { buildRows, initialMessagePosition, makeDividerLabel } from './message-list.js'
+
+describe('initial message position', () => {
+  it('opens at the last row with bottom alignment', () => {
+    expect(initialMessagePosition(100, undefined, true)).toEqual({ index: 99, align: 'end' })
+  })
+  it('prioritizes a search hit, including the first row', () => {
+    expect(initialMessagePosition(100, 0, true)).toEqual({ index: 0, align: 'center' })
+  })
+  it('handles empty lists and preserves the default for other consumers', () => {
+    expect(initialMessagePosition(0, undefined, true)).toBeUndefined()
+    expect(initialMessagePosition(100, undefined, false)).toBeUndefined()
+  })
+})
 import { DEFAULT_LABELS, type ConversationMessage } from './types.js'
 
 function msg(overrides: Partial<ConversationMessage> & { id: number }): ConversationMessage {

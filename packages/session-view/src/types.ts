@@ -17,6 +17,8 @@ export interface ConversationMessage {
 
 /** UI strings the list needs; consumers localize, defaults are English. */
 export interface MessageListLabels {
+  user?: string
+  agent?: string
   today: string
   yesterday: string
   /** e.g. (3) => '3 messages' */

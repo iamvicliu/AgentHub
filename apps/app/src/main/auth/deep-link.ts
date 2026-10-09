@@ -1,5 +1,5 @@
-// spool:// deep-link plumbing. One custom scheme for the whole app —
-// today only the WorkOS sign-in callback rides it (spool://auth/callback);
+// agenthub:// deep-link plumbing. One custom scheme for the whole app —
+// today only the WorkOS sign-in callback rides it (agenthub://auth/callback);
 // future surfaces (resume links, ...) add listeners, not schemes.
 //
 // Why a custom scheme and not a 127.0.0.1 loopback server: WorkOS
@@ -20,7 +20,7 @@ import { resolve } from 'node:path'
 
 import { app } from 'electron'
 
-export const DEEP_LINK_SCHEME = 'spool'
+export const DEEP_LINK_SCHEME = 'agenthub'
 
 /** Return true to consume the URL (stops further listeners). */
 type DeepLinkListener = (url: URL) => boolean

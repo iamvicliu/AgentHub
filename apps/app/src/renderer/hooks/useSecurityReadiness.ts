@@ -27,6 +27,7 @@ export function useSecurityReadiness(): SecurityReadiness {
         // Eager registration means this rejection only happens if the
         // feature flag is off — leave the initial 'booting' state in
         // place; the parent feature-flag gate keeps the surface hidden.
+        if (!cancelled) setReadiness({ ready: false, reason: 'scanner-unavailable' })
       })
     const off = securityApi.onReadinessChanged((next) => {
       setReadiness(next)

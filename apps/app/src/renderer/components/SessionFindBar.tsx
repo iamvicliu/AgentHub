@@ -2,6 +2,8 @@ import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { sessionFindKeyAction } from './sessionFindKeys.js'
+
 type Props = {
   visible: boolean
   focusNonce: number
@@ -34,8 +36,8 @@ export default function SessionFindBar({
   const inputRef = useRef<HTMLInputElement>(null)
   const selectionRef = useRef<{ start: number; end: number } | null>(null)
   const isMacLike = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
-  const previousShortcutLabel = isMacLike ? '⌘←' : 'Ctrl+←'
-  const nextShortcutLabel = isMacLike ? '⌘→' : 'Ctrl+→'
+  const previousShortcutLabel = isMacLike ? '⌘⇧G / Shift+Enter' : 'Ctrl+Shift+G / Shift+Enter'
+  const nextShortcutLabel = isMacLike ? '⌘G / Enter' : 'Ctrl+G / Enter'
 
   const rememberSelection = useCallback((input: HTMLInputElement) => {
     const start = input.selectionStart ?? input.value.length
@@ -114,18 +116,14 @@ export default function SessionFindBar({
         onKeyUp={(event) => rememberSelection(event.currentTarget)}
         onSelect={(event) => rememberSelection(event.currentTarget)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            if (event.shiftKey) {
-              onPrevious()
-            } else {
-              onNext()
-            }
-            rememberSelection(event.currentTarget)
-          } else if (event.key === 'Escape') {
-            event.preventDefault()
-            onClose()
-          }
+          const action = sessionFindKeyAction(event.nativeEvent, isMacLike)
+          if (!action) return
+          event.preventDefault()
+          event.stopPropagation()
+          if (action === 'previous') onPrevious()
+          else if (action === 'next') onNext()
+          else onClose()
+          rememberSelection(event.currentTarget)
         }}
         placeholder={t('session.find_placeholder')}
         className="text-warm-text dark:text-dark-text placeholder:text-warm-faint dark:placeholder:text-dark-muted min-w-0 flex-1 bg-transparent text-[13px] outline-none"

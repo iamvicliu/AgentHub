@@ -184,9 +184,14 @@ describe('migration v5 (connector subsystem removal)', () => {
     expect(sources.map((s) => s.name).sort()).toEqual([
       'claude',
       'codex',
+      'cursor',
+      'dsh',
       'gemini',
+      'hermes',
+      'openclaw',
       'opencode',
       'pi',
+      'workbuddy',
     ])
 
     // After v7: stars dropped, session star preserved as pin, capture star gone

@@ -33,7 +33,7 @@ export async function performSignIn(deps: SignInDeps): Promise<SignInResult['use
 }
 
 /** Optional override for the sign-in dance. Default is the production
- *  WorkOS PKCE flow (system browser + spool:// callback). Override
+ *  WorkOS PKCE flow (system browser + agenthub:// callback). Override
  *  exists so the e2e composition root can substitute a fake code POST
  *  that exercises the rest of the IPC + backend chain without a real
  *  browser. */

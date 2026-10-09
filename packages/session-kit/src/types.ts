@@ -1,4 +1,15 @@
-export const SESSION_PROVIDERS = ['claude', 'codex', 'gemini', 'opencode', 'pi'] as const
+export const SESSION_PROVIDERS = [
+  'claude',
+  'codex',
+  'gemini',
+  'opencode',
+  'pi',
+  'hermes',
+  'openclaw',
+  'workbuddy',
+  'dsh',
+  'cursor',
+] as const
 export type SessionProvider = (typeof SESSION_PROVIDERS)[number]
 
 export const RESUMABLE_SESSION_PROVIDERS = ['claude', 'codex'] as const
@@ -10,6 +21,11 @@ export const SESSION_PROVIDER_LABELS: Record<SessionProvider, string> = {
   gemini: 'Gemini CLI',
   opencode: 'OpenCode',
   pi: 'Pi',
+  hermes: 'Hermes',
+  openclaw: 'OpenClaw',
+  workbuddy: 'WorkBuddy',
+  dsh: 'DeepSeek Harness',
+  cursor: 'Cursor',
 }
 
 export function isSessionProvider(value: unknown): value is SessionProvider {

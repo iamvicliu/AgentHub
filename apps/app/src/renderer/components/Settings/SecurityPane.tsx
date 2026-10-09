@@ -3,8 +3,7 @@
 // Layout follows the Image #22 handoff but typography + padding match
 // the rest of the Settings tabs (see GeneralTab + SourcesTab in
 // SettingsPanel.tsx): top-level wrapper is `space-y-6` with no extra
-// padding, section headers use the project-wide uppercase 11px label,
-// row labels are 12px warm-muted, descriptions are 11px warm-faint.
+// padding, section headings and row typography use SettingsSection.
 //
 // State persisted via securityApi.setPrefs(); see ../../../main/
 // securityPreferences.ts for the on-disk schema.
@@ -12,7 +11,6 @@
 import type { ScanStatus, AllowlistEntryRow } from '@spool-lab/core'
 import {
   SENSITIVE_KIND_ORDER,
-  SENSITIVE_KIND_LABEL,
   HIGH_SEVERITY_KINDS,
   INFO_SEVERITY_KINDS,
   type SensitiveKind,
@@ -41,7 +39,9 @@ import {
 import { useSecurityReadiness } from '../../hooks/useSecurityReadiness.js'
 import Menu from '../Menu.js'
 import AllowlistManageModal from '../security/AllowlistManageModal.js'
-import { formatBytes } from '../security/format.js'
+import { formatBytes, friendlyMaskName } from '../security/format.js'
+import SecurityIntroduction from '../security/SecurityIntroduction.js'
+import Section, { settingsLabelClass, settingsDescriptionClass } from '../SettingsSection.js'
 import Toggle from '../Toggle.js'
 import PfDownloadCard from './security/PfDownloadCard.js'
 
@@ -117,6 +117,7 @@ function SecurityPaneInner() {
     if (prefs === null) {
       void primeSecurityPrefsCache()
     }
+    return securityApi.onScanStatus(setStatus)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -136,6 +137,8 @@ function SecurityPaneInner() {
       await securityApi.rescanAll()
       const s = await securityApi.getScanStatus()
       setStatus(s)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
     } finally {
       setBusy(false)
     }
@@ -152,6 +155,7 @@ function SecurityPaneInner() {
 
   return (
     <div className="space-y-6">
+      <SecurityIntroduction />
       {/* Detectors */}
       <Section title={t('settings.security.detectors_title', { defaultValue: 'Detectors' })}>
         {/* Pattern matching card — active, never togglable */}
@@ -429,17 +433,6 @@ function SecurityPaneInner() {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <h4 className="text-warm-faint dark:text-dark-muted mb-2 text-[11px] font-medium tracking-[0.08em] uppercase">
-        {title}
-      </h4>
-      {children}
-    </div>
-  )
-}
-
 interface DefaultsRowProps {
   label: string
   description?: string
@@ -449,10 +442,8 @@ function DefaultsRow({ label, description, control }: DefaultsRowProps) {
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <span className="text-warm-muted dark:text-dark-muted text-xs">{label}</span>
-        {description && (
-          <p className="text-warm-faint dark:text-dark-muted mt-0.5 text-[11px]">{description}</p>
-        )}
+        <span className={settingsLabelClass}>{label}</span>
+        {description && <p className={`${settingsDescriptionClass} mt-1`}>{description}</p>}
       </div>
       <div className="shrink-0 pt-0.5">{control}</div>
     </div>
@@ -621,6 +612,7 @@ interface MutedKindsGroupProps {
   tone: 'high' | 'low' | 'info'
 }
 function MutedKindsGroup({ label, kinds, muted, onToggle, tone }: MutedKindsGroupProps) {
+  const { t } = useTranslation()
   return (
     <div>
       <div className="text-warm-faint dark:text-dark-muted mb-1.5 text-[10px] tracking-[0.08em] uppercase">
@@ -651,7 +643,7 @@ function MutedKindsGroup({ label, kinds, muted, onToggle, tone }: MutedKindsGrou
               aria-pressed={active}
               className={`inline-flex h-6 items-center gap-1.5 rounded-[6px] border px-2 font-mono text-[11px] transition-colors ${palette}`}
             >
-              {SENSITIVE_KIND_LABEL[k] ?? k}
+              {friendlyMaskName(k, t)}
             </button>
           )
         })}

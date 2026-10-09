@@ -1,4 +1,14 @@
-export type SessionSource = 'claude' | 'codex' | 'gemini' | 'opencode' | 'pi'
+export type SessionSource =
+  | 'claude'
+  | 'codex'
+  | 'gemini'
+  | 'opencode'
+  | 'pi'
+  | 'hermes'
+  | 'openclaw'
+  | 'workbuddy'
+  | 'dsh'
+  | 'cursor'
 export type Source = SessionSource
 export type SearchMatchType = 'fts' | 'phrase' | 'all_terms'
 
@@ -21,6 +31,9 @@ export interface ParsedSession {
   cwd: string
   /** Provider-recorded Git remote, when available. */
   gitRemote?: string
+  /** Which account of the provider this session belongs to, when a provider
+   *  keeps several (WorkBuddy does). Shown as a list badge; nothing is hidden. */
+  account?: string
   model: string
   startedAt: string
   endedAt: string
@@ -45,6 +58,9 @@ export interface Session {
   hasToolUse: boolean
   cwd: string | null
   model: string | null
+  /** Provider account this session belongs to, when the provider keeps more
+   *  than one (WorkBuddy does). null for every other source. */
+  account: string | null
   source: SessionSource
   projectDisplayPath: string
   projectDisplayName: string
@@ -139,6 +155,11 @@ export interface StatusInfo {
   geminiSessions: number
   opencodeSessions: number
   piSessions: number
+  hermesSessions: number
+  openclawSessions: number
+  workbuddySessions: number
+  dshSessions: number
+  cursorSessions: number
   lastSyncedAt: string | null
   dbSizeBytes: number
 }

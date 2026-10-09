@@ -3,10 +3,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import Database from 'better-sqlite3'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 const tempDirs: string[] = []
 const openDbs: Array<{ close: () => void }> = []
+beforeEach(() => {
+  const base = makeTempDir('spool-isolated-agent-roots-')
+  vi.stubEnv('SPOOL_HERMES_DIR', join(base, 'missing-hermes'))
+  vi.stubEnv('SPOOL_OPENCLAW_DIR', join(base, 'missing-openclaw'))
+  // Every source a run can discover must point somewhere empty, or it picks up
+  // the developer's real home and the counts stop being deterministic.
+  vi.stubEnv('SPOOL_WORKBUDDY_DIR', join(base, 'missing-workbuddy'))
+  vi.stubEnv('SPOOL_DSH_DIR', join(base, 'missing-dsh'))
+  vi.stubEnv('SPOOL_CURSOR_DIR', join(base, 'missing-cursor'))
+})
 
 afterEach(() => {
   while (openDbs.length > 0) {
@@ -21,6 +31,259 @@ afterEach(() => {
 })
 
 describe('Syncer', () => {
+  it('indexes OpenClaw transcripts into source-filtered search and reconciles removed files', async () => {
+    const base = makeTempDir('spool-openclaw-sync-')
+    for (const provider of ['CLAUDE', 'CODEX', 'GEMINI', 'OPENCODE', 'PI', 'HERMES'])
+      vi.stubEnv(`SPOOL_${provider}_DIR`, join(base, provider))
+    const root = join(base, 'agents')
+    const sessions = join(root, 'main', 'sessions')
+    mkdirSync(sessions, { recursive: true })
+    vi.stubEnv('SPOOL_OPENCLAW_DIR', root)
+    vi.stubEnv('SPOOL_DATA_DIR', join(base, 'data'))
+    const path = join(sessions, 'fixture.jsonl')
+    writeFileSync(
+      path,
+      [
+        { type: 'session', id: 'fixture', cwd: '/tmp/fixture', timestamp: '2026-10-06T00:00:00Z' },
+        {
+          type: 'message',
+          id: 'u',
+          message: { role: 'user', content: 'OpenClaw search fixture' },
+          timestamp: '2026-10-06T00:00:01Z',
+        },
+        {
+          type: 'message',
+          id: 'a',
+          message: { role: 'assistant', content: 'reply' },
+          timestamp: '2026-10-06T00:00:02Z',
+        },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join('\n') + '\n',
+    )
+    const { getDB, Syncer, searchFragments } = await loadCoreModules()
+    const db = getDB()
+    openDbs.push(db)
+    const syncer = new Syncer(db)
+    expect(syncer.syncAll()).toMatchObject({ added: 1, errors: 0 })
+    expect(
+      searchFragments(db, 'OpenClaw search fixture', { source: 'openclaw', limit: 5 }),
+    ).toHaveLength(1)
+    rmSync(path)
+    syncer.syncAll()
+    expect(db.prepare('SELECT COUNT(*) AS n FROM sessions').get()).toEqual({ n: 0 })
+  })
+  it('indexes Cursor transcripts and groups a chat with no folder under its workspace slug', async () => {
+    const base = makeTempDir('spool-cursor-sync-')
+    for (const provider of ['CLAUDE', 'CODEX', 'GEMINI', 'OPENCODE', 'PI', 'HERMES', 'OPENCLAW'])
+      vi.stubEnv(`SPOOL_${provider}_DIR`, join(base, provider))
+    const root = join(base, 'cursor', 'projects')
+    const id = '00000000-0000-4000-8000-0000000000c2'
+    const chat = join(root, 'empty-window', 'agent-transcripts', id)
+    mkdirSync(chat, { recursive: true })
+    // Assets beside the transcripts are not chats.
+    mkdirSync(join(root, 'empty-window', 'assets'), { recursive: true })
+    writeFileSync(join(root, 'empty-window', 'assets', 'x.jsonl'), '{}\n')
+    vi.stubEnv('SPOOL_CURSOR_DIR', root)
+    vi.stubEnv('SPOOL_CURSOR_STATE_DB', join(base, 'missing-state.vscdb'))
+    vi.stubEnv('SPOOL_DATA_DIR', join(base, 'data'))
+    writeFileSync(
+      join(chat, `${id}.jsonl`),
+      [
+        {
+          role: 'user',
+          message: {
+            content: [{ type: 'text', text: '<user_query>Cursor search fixture</user_query>' }],
+          },
+        },
+        { role: 'assistant', message: { content: [{ type: 'text', text: 'reply' }] } },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join('\n') + '\n',
+    )
+    const { getDB, Syncer, searchFragments } = await loadCoreModules()
+    const db = getDB()
+    openDbs.push(db)
+    expect(new Syncer(db).syncAll()).toMatchObject({ added: 1, errors: 0 })
+    expect(
+      searchFragments(db, 'Cursor search fixture', { source: 'cursor', limit: 5 }),
+    ).toHaveLength(1)
+    expect(
+      db
+        .prepare(
+          'SELECT p.display_path AS path FROM sessions s JOIN projects p ON p.id = s.project_id',
+        )
+        .get(),
+    ).toEqual({ path: 'empty-window' })
+
+    // A session indexed under an older grouping moves on re-index rather than
+    // staying under its first-sync project.
+    const stale = db
+      .prepare(
+        "INSERT INTO projects (source_id, slug, display_path, display_name) SELECT source_id, 'agent-transcripts', 'agent-transcripts', 'Loose' FROM sessions",
+      )
+      .run().lastInsertRowid
+    db.prepare("UPDATE sessions SET project_id = ?, raw_file_mtime = 'stale'").run(stale)
+    new Syncer(db).syncAll()
+    expect(
+      db
+        .prepare(
+          'SELECT p.display_path AS path FROM sessions s JOIN projects p ON p.id = s.project_id',
+        )
+        .get(),
+    ).toEqual({ path: 'empty-window' })
+  })
+  it('indexes Hermes SQLite into search and removes agent-deleted sessions without writing the source', async () => {
+    const base = makeTempDir('spool-hermes-sync-')
+    for (const provider of ['CLAUDE', 'CODEX', 'GEMINI', 'OPENCODE', 'PI', 'OPENCLAW'])
+      vi.stubEnv(`SPOOL_${provider}_DIR`, join(base, provider))
+    vi.stubEnv('SPOOL_HERMES_DIR', base)
+    vi.stubEnv('SPOOL_DATA_DIR', join(base, 'data'))
+    const source = new Database(join(base, 'state.db'))
+    openDbs.push(source)
+    source.exec(`CREATE TABLE sessions(id TEXT, title TEXT, cwd TEXT, model TEXT, started_at REAL, archived INTEGER);
+      CREATE TABLE messages(id INTEGER, session_id TEXT, role TEXT, content TEXT, timestamp REAL, active INTEGER);
+      INSERT INTO sessions VALUES('fixture', 'Hermes fixture title', '/tmp/fixture', 'test-model', 1791244800, 0);
+      INSERT INTO messages VALUES(1, 'fixture', 'user', 'Hermes search needle', 1791244801, 1), (2, 'fixture', 'assistant', 'fixture reply', 1791244802, 1);`)
+    const { getDB, Syncer, searchFragments } = await loadCoreModules()
+    const db = getDB()
+    openDbs.push(db)
+    const syncer = new Syncer(db)
+    expect(syncer.syncAll()).toMatchObject({ added: 1, errors: 0 })
+    expect(
+      searchFragments(db, 'Hermes search needle', { source: 'hermes', limit: 5 }),
+    ).toHaveLength(1)
+    expect(source.prepare('SELECT COUNT(*) AS n FROM messages').get()).toEqual({ n: 2 })
+    source.exec('DELETE FROM sessions')
+    syncer.syncAll()
+    expect(db.prepare('SELECT COUNT(*) AS n FROM sessions').get()).toEqual({ n: 0 })
+  })
+  it('reads resume titles during watcher-style Codex sync and preserves local renames', async () => {
+    const baseDir = makeTempDir('spool-codex-resume-title-')
+    const sessionsDir = join(baseDir, 'codex', 'sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    vi.stubEnv('SPOOL_DATA_DIR', join(baseDir, 'spool-data'))
+    vi.stubEnv('SPOOL_CODEX_DIR', sessionsDir)
+    const uuid = 'fixture-resume-title'
+    writeFileSync(
+      join(baseDir, 'codex', 'session_index.jsonl'),
+      JSON.stringify({ id: uuid, thread_name: 'Resume display name' }) + '\n',
+    )
+    const filePath = join(sessionsDir, 'session.jsonl')
+    writeFileSync(
+      filePath,
+      [
+        {
+          timestamp: '2026-10-06T10:00:00Z',
+          type: 'session_meta',
+          payload: { id: uuid, cwd: '/tmp/project' },
+        },
+        {
+          timestamp: '2026-10-06T10:00:01Z',
+          type: 'response_item',
+          payload: { role: 'user', content: [{ type: 'input_text', text: 'Actual user request' }] },
+        },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join('\n'),
+    )
+    const { getDB, Syncer, searchFragments } = await loadCoreModules()
+    const db = getDB()
+    openDbs.push(db)
+    const syncer = new Syncer(db)
+    expect(syncer.syncFile(filePath, 'codex')).toBe('added')
+    expect(db.prepare('SELECT title FROM sessions WHERE session_uuid = ?').get(uuid)).toEqual({
+      title: 'Resume display name',
+    })
+    expect(searchFragments(db, 'Resume display', { limit: 5 })).toHaveLength(1)
+    db.prepare("UPDATE sessions SET title = ?, title_source = 'user' WHERE session_uuid = ?").run(
+      'Local display name',
+      uuid,
+    )
+    expect(syncer.syncFile(filePath, 'codex', undefined, undefined, { forceMode: 'rewrite' })).toBe(
+      'updated',
+    )
+    expect(db.prepare('SELECT title FROM sessions WHERE session_uuid = ?').get(uuid)).toEqual({
+      title: 'Local display name',
+    })
+  })
+
+  it('mirrors the Codex app thread catalog: visibility, titles and later changes', async () => {
+    const baseDir = makeTempDir('spool-codex-catalog-')
+    const home = join(baseDir, 'codex')
+    const sessionsDir = join(home, 'sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    vi.stubEnv('SPOOL_DATA_DIR', join(baseDir, 'spool-data'))
+    vi.stubEnv('SPOOL_CODEX_DIR', sessionsDir)
+    for (const provider of ['CLAUDE', 'GEMINI', 'OPENCODE', 'PI'])
+      vi.stubEnv(`SPOOL_${provider}_DIR`, join(baseDir, `missing-${provider.toLowerCase()}`))
+    const write = (id: string, text: string) =>
+      writeFileSync(
+        join(sessionsDir, `rollout-2026-10-07T10-00-00-${id}.jsonl`),
+        [
+          {
+            timestamp: '2026-10-07T10:00:00Z',
+            type: 'session_meta',
+            payload: { id, cwd: '/tmp/project' },
+          },
+          {
+            timestamp: '2026-10-07T10:00:01Z',
+            type: 'response_item',
+            payload: { role: 'user', content: [{ type: 'input_text', text }] },
+          },
+        ]
+          .map((record) => JSON.stringify(record))
+          .join('\n'),
+      )
+    const ids = {
+      shown: '11111111-1111-4111-8111-111111111111',
+      subagent: '22222222-2222-4222-8222-222222222222',
+      archived: '33333333-3333-4333-8333-333333333333',
+      uncatalogued: '44444444-4444-4444-8444-444444444444',
+    }
+    for (const [key, id] of Object.entries(ids)) write(id, `${key} request`)
+    writeFileSync(
+      join(home, 'session_index.jsonl'),
+      JSON.stringify({ id: ids.shown, thread_name: 'Old index name' }) + '\n',
+    )
+    const catalog = new Database(join(home, 'state_5.sqlite'))
+    openDbs.push(catalog)
+    catalog.exec('CREATE TABLE threads(id TEXT, source TEXT, archived INTEGER, name TEXT)')
+    const insert = catalog.prepare('INSERT INTO threads VALUES (?, ?, ?, ?)')
+    insert.run(ids.shown, 'cli', 0, 'Codex app name')
+    insert.run(ids.subagent, '{"subagent":{"thread_spawn":{}}}', 0, 'Subagent')
+    insert.run(ids.archived, 'vscode', 1, 'Archived')
+
+    const { getDB, Syncer } = await loadCoreModules()
+    const db = getDB()
+    openDbs.push(db)
+    const syncer = new Syncer(db)
+    syncer.syncAll()
+    const listed = () =>
+      db
+        .prepare(
+          'SELECT session_uuid AS uuid, title, title_source AS source FROM sessions ORDER BY session_uuid',
+        )
+        .all()
+    expect(listed()).toEqual([
+      { uuid: ids.shown, title: 'Codex app name', source: 'derived' },
+      { uuid: ids.uncatalogued, title: 'uncatalogued request', source: 'derived' },
+    ])
+
+    // A title locked by an old AgentHub rename now follows Codex; archive and unarchive flow too.
+    db.prepare(
+      "UPDATE sessions SET title = 'Local name', title_source = 'user' WHERE session_uuid = ?",
+    ).run(ids.shown)
+    catalog.prepare('UPDATE threads SET name = ? WHERE id = ?').run('Renamed in Codex', ids.shown)
+    catalog.prepare('UPDATE threads SET archived = ? WHERE id = ?').run(0, ids.archived)
+    insert.run(ids.uncatalogued, 'exec', 0, null)
+    expect(syncer.applyCodexCatalog()).toBe(3)
+    expect(listed()).toEqual([
+      { uuid: ids.shown, title: 'Renamed in Codex', source: 'derived' },
+      { uuid: ids.archived, title: 'Archived', source: 'derived' },
+    ])
+  })
+
   it('keeps an existing Gemini session indexed when the session file becomes unreadable', async () => {
     const baseDir = makeTempDir('spool-syncer-gemini-')
     const geminiCliHome = join(baseDir, 'gemini-home')

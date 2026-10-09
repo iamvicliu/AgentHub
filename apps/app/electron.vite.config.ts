@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 import tailwindcss from '@tailwindcss/vite'
@@ -5,6 +6,11 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { loadEnv } from 'vite'
 import type { Plugin } from 'vite'
+
+/** Shown on the About page; read from this package so it never drifts. */
+const appVersion = (
+  JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')) as { version: string }
+).version
 
 const coreAlias = {
   '@spool-lab/core': resolve(__dirname, '../../packages/core/dist/index.js'),
@@ -58,7 +64,7 @@ function runtimeExternalPlugin(): Plugin {
 // `.env.development.local.example`.
 const MAIN_INLINE_ENV: readonly string[] = [
   // WorkOS environment client id for the desktop PKCE sign-in
-  // (system browser + spool:// callback). Public-client id, not a
+  // (system browser + agenthub:// callback). Public-client id, not a
   // secret; the PKCE verifier is what protects the exchange.
   'SPOOL_WORKOS_CLIENT_ID',
   // Backend origin for `/api/auth/sign-in-with-code`, `/api/me`, etc.
@@ -248,6 +254,9 @@ export default defineConfig(({ command, mode }) => ({
           'pf-inference': resolve(__dirname, 'src/renderer/pf-inference.html'),
         },
       },
+    },
+    define: {
+      __AGENTHUB_VERSION__: JSON.stringify(appVersion),
     },
     resolve: { alias: coreAlias },
     plugins: [react(), tailwindcss()],

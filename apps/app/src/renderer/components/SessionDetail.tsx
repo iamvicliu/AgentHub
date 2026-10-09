@@ -9,6 +9,7 @@ import {
   Check,
   RotateCcw,
   Link2,
+  Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,13 +29,22 @@ import PinButton from './PinButton.js'
 import FindingsStrip from './security/FindingsStrip.js'
 import RefreshFromSourceDialog from './session/RefreshFromSourceDialog.js'
 import SessionFindBar from './SessionFindBar.js'
+import { requestSessionManagement } from './SessionManagement.js'
+import {
+  isInternalMessage,
+  projectReadingMessages,
+  userMessageDirectory,
+} from './sessionReading.js'
+import { SessionReadingTools, SessionMessageDirectory } from './SessionReadingTools.js'
+import { useReadingPreferences } from './useReadingPreferences.js'
 
 type Props = {
   sessionUuid: string
   targetMessageId?: number | null
+  persistTargetHighlight?: boolean
   onCopySessionId: (source: Session['source']) => void
   onBack?: () => void
-  onShare: (session: Session, messages: Message[]) => void
+  onShare?: (session: Session, messages: Message[]) => void
 }
 
 // Keystrokes inside this window coalesce into one find projection — the
@@ -44,13 +54,48 @@ const FIND_DEBOUNCE_MS = 120
 export default function SessionDetail({
   sessionUuid,
   targetMessageId,
+  persistTargetHighlight = false,
   onCopySessionId,
   onBack,
   onShare,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [session, setSession] = useState<Session | null>(null)
+  useEffect(() => {
+    function renamed(event: Event) {
+      const { uuid, title } = (event as CustomEvent<{ uuid: string; title: string }>).detail
+      if (uuid === sessionUuid) setSession((current) => (current ? { ...current, title } : current))
+    }
+    window.addEventListener('spool:session-renamed', renamed)
+    return () => window.removeEventListener('spool:session-renamed', renamed)
+  }, [sessionUuid])
   const [messages, setMessages] = useState<Message[]>([])
+  const { prefs: readingPrefs, update: updateReadingPrefs } = useReadingPreferences()
+  const [revealLinkedMessage, setRevealLinkedMessage] = useState(false)
+  const onlyUser = readingPrefs.onlyUser && !revealLinkedMessage
+  const [revealLinkedInternal, setRevealLinkedInternal] = useState(false)
+  const showInternal = readingPrefs.showInternal || revealLinkedInternal
+  const directoryOpen = readingPrefs.directoryOpen
+  const [directoryTarget, setDirectoryTarget] = useState<number | null>(null)
+  const readingTarget = directoryTarget ?? targetMessageId
+  const visibleMessages = useMemo(
+    () => projectReadingMessages(messages, onlyUser, showInternal),
+    [messages, onlyUser, showInternal],
+  )
+  const directoryEntries = useMemo(() => userMessageDirectory(visibleMessages), [visibleMessages])
+  useEffect(() => {
+    setRevealLinkedMessage(false)
+    setRevealLinkedInternal(false)
+    setDirectoryTarget(null)
+  }, [sessionUuid])
+  useEffect(() => {
+    setDirectoryTarget(null)
+    const target = messages.find((message) => message.id === targetMessageId)
+    setRevealLinkedMessage(Boolean(target && target.role !== 'user'))
+    setRevealLinkedInternal(Boolean(target && isInternalMessage(target)))
+    if (!target) return
+    // Linked Agent messages temporarily bypass, but never overwrite, the saved filter.
+  }, [targetMessageId, messages])
   const [loading, setLoading] = useState(true)
   const [pinned, setPinned] = useState(false)
   // Findings strip is collapsed by default — only the risk pill in the
@@ -68,6 +113,18 @@ export default function SessionDetail({
   const [refreshing, setRefreshing] = useState(false)
   const [showFindBar, setShowFindBar] = useState(false)
   const [showTargetHighlight, setShowTargetHighlight] = useState(false)
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onTargetVisible = useCallback(() => {
+    setShowTargetHighlight(true)
+    if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    highlightTimer.current = setTimeout(() => setShowTargetHighlight(false), 8000)
+  }, [])
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    },
+    [],
+  )
   const [findFocusNonce, setFindFocusNonce] = useState(0)
   const [findResultNonce, setFindResultNonce] = useState(0)
   const [findQuery, setFindQuery] = useState('')
@@ -104,7 +161,7 @@ export default function SessionDetail({
     // Only project markdown → rendered text when a query is active. For a 1500-message
     // session this saves ~1500 remark.parse calls on session open.
     if (effectiveFindQuery) {
-      for (const message of messages) {
+      for (const message of visibleMessages) {
         const source = message.contentText || (message.role === 'system' ? '(summary)' : '')
         const text = extractRenderedText(source)
         const ranges = getFindRanges(text, effectiveFindQuery)
@@ -119,7 +176,7 @@ export default function SessionDetail({
       messageFindRanges: rangesByMessage,
       totalFindMatches: offset,
     }
-  }, [messages, effectiveFindQuery])
+  }, [visibleMessages, effectiveFindQuery])
 
   const activeMatchOrdinal = totalFindMatches > 0 ? activeMatchIndex + 1 : 0
 
@@ -214,14 +271,11 @@ export default function SessionDetail({
   }, [sessionUuid])
 
   useEffect(() => {
-    if (!loading && targetMessageId) {
-      listRef.current?.scrollToMessageId(targetMessageId)
-      setShowTargetHighlight(true)
-      const timer = setTimeout(() => setShowTargetHighlight(false), 2000)
-      return () => clearTimeout(timer)
+    if (!loading && readingTarget != null) {
+      listRef.current?.scrollToMessageId(readingTarget)
     }
     return undefined
-  }, [loading, targetMessageId])
+  }, [loading, readingTarget, visibleMessages])
 
   useEffect(() => {
     setShowFindBar(false)
@@ -254,10 +308,18 @@ export default function SessionDetail({
   useHotkeys(
     {
       Escape: closeFindBar,
+      'mod+[': () => onBack?.(),
+      'mod+shift+g': findPrevious,
+      'mod+g': findNext,
       'mod+arrowleft': findPrevious,
       'mod+arrowright': findNext,
     },
     { active: showFindBar },
+  )
+
+  useHotkeys(
+    { 'mod+[': () => onBack?.(), 'alt+arrowleft': () => onBack?.(), Escape: () => onBack?.() },
+    { active: !showFindBar && Boolean(onBack), skipInEditable: true },
   )
 
   useEffect(() => {
@@ -357,16 +419,16 @@ export default function SessionDetail({
   return (
     <div className="relative flex h-full flex-col" data-testid="session-detail">
       {/* Session header */}
-      <div className="flex flex-none items-start gap-3 px-6 pt-1.5 pb-3">
+      <div className="flex flex-none flex-wrap items-start gap-3 px-6 pt-1.5 pb-3">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
             aria-label={t('common.back')}
-            title={t('common.back')}
-            className="text-warm-muted dark:text-dark-muted hover:bg-warm-surface dark:hover:bg-dark-surface hover:text-warm-text dark:hover:text-dark-text flex h-5 w-5 flex-none items-center justify-center rounded transition-colors"
+            title={`${t('common.back')} (⌘[ / Alt+←)`}
+            className="text-warm-muted dark:text-dark-muted hover:bg-warm-surface dark:hover:bg-dark-surface hover:text-warm-text dark:hover:text-dark-text flex h-11 w-11 flex-none items-center justify-center rounded-md transition-colors"
           >
-            <svg width="11" height="11" viewBox="0 0 13 13" fill="none">
+            <svg width="20" height="20" viewBox="0 0 13 13" fill="none">
               <path
                 d="M8 3L4 6.5L8 10"
                 stroke="currentColor"
@@ -378,7 +440,7 @@ export default function SessionDetail({
           </button>
         )}
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-48 flex-1">
           <h2
             className="text-warm-text dark:text-dark-text truncate text-sm font-medium"
             title={session.title ?? undefined}
@@ -414,9 +476,14 @@ export default function SessionDetail({
         </div>
 
         <div className="flex flex-none items-center gap-0.5 self-end">
-          <PinButton sessionUuid={session.sessionUuid} pinned={pinned} onChange={setPinned} />
+          <PinButton
+            sessionUuid={session.sessionUuid}
+            pinned={pinned}
+            onChange={setPinned}
+            showLabel
+          />
 
-          {session && (
+          {onShare && (
             <button
               data-testid="detail-share"
               onClick={() => onShare(session, messages)}
@@ -432,16 +499,47 @@ export default function SessionDetail({
             </button>
           )}
 
-          <button
-            data-testid="detail-resume"
-            onClick={handleResume}
-            disabled={resuming}
-            title={resuming ? t('common.loading') : t('session.resume_inTerminal')}
-            aria-label={resuming ? t('common.loading') : t('session.resume_inTerminal')}
-            className="text-warm-faint dark:text-dark-muted hover:bg-warm-surface2 dark:hover:bg-dark-surface2 hover:text-warm-text dark:hover:text-dark-text inline-flex h-5 w-5 items-center justify-center rounded transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <SquareTerminal size={13} strokeWidth={1.6} aria-hidden />
-          </button>
+          {/* Only sources with a CLI resume command get this; for the rest
+              (Cursor, WorkBuddy, DSH, Hermes, …) the click could only fail. */}
+          {resumeCommandAvailable && (
+            <button
+              data-testid="detail-resume"
+              onClick={handleResume}
+              disabled={resuming}
+              title={resuming ? t('common.loading') : t('session.resume_help')}
+              aria-label={resuming ? t('common.loading') : t('session.resume_inTerminal')}
+              className="text-warm-muted dark:text-dark-muted hover:bg-warm-surface2 dark:hover:bg-dark-surface2 hover:text-warm-text dark:hover:text-dark-text inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <SquareTerminal size={13} strokeWidth={1.6} aria-hidden />
+              <span>{resuming ? t('common.loading') : t('session.resume_inTerminal')}</span>
+            </button>
+          )}
+
+          {(['rename', 'delete'] as const).map((action) => (
+            <button
+              key={action}
+              type="button"
+              data-testid={`detail-${action}`}
+              onClick={() =>
+                requestSessionManagement({
+                  uuid: session.sessionUuid,
+                  source: session.source,
+                  title: session.title ?? '',
+                  action,
+                })
+              }
+              title={t(`session.${action}`)}
+              aria-label={t(`session.${action}`)}
+              className="text-warm-muted dark:text-dark-muted hover:bg-warm-surface2 dark:hover:bg-dark-surface2 hover:text-warm-text dark:hover:text-dark-text inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm transition-colors"
+            >
+              {action === 'rename' ? (
+                <SquarePen size={13} strokeWidth={1.6} aria-hidden />
+              ) : (
+                <Trash2 size={13} strokeWidth={1.6} aria-hidden />
+              )}
+              <span>{t(`session.${action}_short`)}</span>
+            </button>
+          ))}
 
           <Menu
             align="right"
@@ -451,9 +549,11 @@ export default function SessionDetail({
                 type="button"
                 onClick={toggle}
                 aria-label={t('common.more')}
-                className="text-warm-faint dark:text-dark-muted hover:bg-warm-surface2 dark:hover:bg-dark-surface2 hover:text-warm-text dark:hover:text-dark-text inline-flex h-5 w-5 items-center justify-center rounded transition-colors"
+                title={t('session.more_help')}
+                className="text-warm-muted dark:text-dark-muted hover:bg-warm-surface2 dark:hover:bg-dark-surface2 hover:text-warm-text dark:hover:text-dark-text inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm transition-colors"
               >
                 <MoreHorizontal size={13} strokeWidth={1.6} aria-hidden />
+                <span>{t('common.more')}</span>
               </button>
             )}
             items={[
@@ -477,13 +577,15 @@ export default function SessionDetail({
                     },
                   ]
                 : []),
-              {
-                label: t('hubShare.menuLabel'),
-                icon: <Link2 size={14} strokeWidth={1.6} aria-hidden />,
-                onSelect: () => {
-                  setHubShareOpen(true)
-                },
-              },
+              ...(onShare
+                ? [
+                    {
+                      label: t('hubShare.menuLabel'),
+                      icon: <Link2 size={14} strokeWidth={1.6} aria-hidden />,
+                      onSelect: () => setHubShareOpen(true),
+                    },
+                  ]
+                : []),
               {
                 label: t('session.refreshFromSource'),
                 icon: <RotateCcw size={14} strokeWidth={1.6} aria-hidden />,
@@ -511,6 +613,16 @@ export default function SessionDetail({
       />
 
       <FindingsStrip session={session} open={stripOpen} onClose={() => setStripOpen(false)} />
+      <SessionReadingTools
+        onlyUser={onlyUser}
+        directoryOpen={directoryOpen}
+        userCount={directoryEntries.length}
+        onOnlyUser={() => {
+          updateReadingPrefs({ onlyUser: !onlyUser })
+          setRevealLinkedMessage(false)
+        }}
+        onDirectory={() => updateReadingPrefs({ directoryOpen: !directoryOpen })}
+      />
 
       <RefreshFromSourceDialog
         open={refreshDialogOpen}
@@ -530,24 +642,52 @@ export default function SessionDetail({
       />
 
       {/* Messages */}
-      <MessageList
-        key={session.sessionUuid}
-        ref={listRef}
-        messages={messages}
-        isDark={isDark}
-        showFindBar={showFindBar}
-        messageFindRanges={messageFindRanges}
-        activeMatchIndex={activeMatchIndex}
-        onActiveMatchRef={bindActiveFindMatch}
-        targetMessageId={targetMessageId ?? null}
-        showTargetHighlight={showTargetHighlight}
-        labels={{
-          today: t('session.divider_today'),
-          yesterday: t('session.divider_yesterday'),
-          messagesCount: (count) => t('session.messages_other', { count }),
-        }}
-        locale={i18n.language}
-      />
+      <div className="relative flex min-h-0 flex-1">
+        {visibleMessages.length === 0 ? (
+          <p className="text-warm-muted dark:text-dark-muted m-auto px-6 text-sm">
+            {t('session.noVisibleMessages')}
+          </p>
+        ) : (
+          <MessageList
+            key={`${session.sessionUuid}:${onlyUser}:${showInternal}`}
+            ref={listRef}
+            messages={visibleMessages}
+            startAtEnd
+            isDark={isDark}
+            showFindBar={showFindBar}
+            messageFindRanges={messageFindRanges}
+            activeMatchIndex={activeMatchIndex}
+            onActiveMatchRef={bindActiveFindMatch}
+            targetMessageId={readingTarget ?? null}
+            showTargetHighlight={
+              showTargetHighlight || (directoryTarget == null && persistTargetHighlight)
+            }
+            onTargetVisible={onTargetVisible}
+            labels={{
+              user: t('session.role_user'),
+              agent: t('session.role_agent'),
+              today: t('session.divider_today'),
+              yesterday: t('session.divider_yesterday'),
+              messagesCount: (count) => t('session.messages_other', { count }),
+            }}
+            locale={i18n.language}
+          />
+        )}
+        {directoryOpen && (
+          <SessionMessageDirectory
+            key={sessionUuid}
+            width={readingPrefs.directoryWidth}
+            onWidthChange={(directoryWidth) => updateReadingPrefs({ directoryWidth })}
+            entries={directoryEntries}
+            selectedId={readingTarget}
+            onJump={(id) => {
+              setDirectoryTarget(id)
+              listRef.current?.scrollToMessageId(id)
+            }}
+            onClose={() => updateReadingPrefs({ directoryOpen: false })}
+          />
+        )}
+      </div>
     </div>
   )
 }

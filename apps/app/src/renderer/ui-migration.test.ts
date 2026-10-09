@@ -55,8 +55,29 @@ describe('desktop shared UI migration', () => {
     expect(sidebar).toContain('<NavItem')
     expect(sessionRow).toContain('<ListRow')
     expect(sessionRow).toContain('metadata={')
+    // About shows the build version; the title above the list is the bare name, no trailing period.
+    expect(readRenderer('components/SettingsPanel.tsx')).toContain(
+      "t('settings.about_version', { version: __AGENTHUB_VERSION__ })",
+    )
+    expect(readRenderer('SessionsApp.tsx')).toMatch(/>\s*AgentHub\s*<\/div>/)
+    // A watcher-driven refresh keeps the list on screen and reports in the footer
+    // instead of blanking the list to "Loading…".
+    const sessionsApp = readRenderer('SessionsApp.tsx')
+    expect(sessionsApp).toContain('const background = listKey.current === key')
+    expect(sessionsApp).toContain("t('status.updating')")
+    // The account label is no longer cut at a fixed length; the meta line truncates.
+    expect(sessionRow).not.toContain('ACCOUNT_LABEL_MAX')
+    // "Continue in terminal" only appears for sources with a CLI resume command.
+    expect(readRenderer('components/SessionDetail.tsx')).toMatch(
+      /\{resumeCommandAvailable && \(\s*<button\s+data-testid="detail-resume"/,
+    )
+    expect(sessionRow).toMatch(/\.\.\.\(resumeCommand\s+\?\s+\[\s+\{\s+label: resuming/)
+    // The message count is its own accented span, not part of the muted meta text.
+    expect(sessionRow).toMatch(
+      /data-testid="session-message-count"\s+className="text-accent dark:text-accent-dark text-xs leading-4 font-semibold"/,
+    )
     expect(sessionRow).toContain('trailing={')
-    expect(pinButton).toContain("size === 'md' ? 'w-8 h-8' : 'w-6 h-6'")
+    expect(pinButton).toContain("size === 'md' ? 'w-11 h-11' : 'w-10 h-10'")
     expect(hubShare.match(/<Button/g)?.length).toBeGreaterThanOrEqual(5)
     expect(virtualList).toContain('<SectionLabel')
   })

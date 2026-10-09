@@ -8,7 +8,12 @@ import { execFileSync } from 'node:child_process'
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vite-plus/test'
 
 const execSync = vi.fn()
-const spawn = vi.fn(() => ({ unref: () => {} }))
+const spawn = vi.fn((..._args: unknown[]) => ({
+  unref: () => {},
+  once: (event: string, callback: () => void) => {
+    if (event === 'spawn') callback()
+  },
+}))
 
 vi.mock('node:child_process', async (importActual) => {
   const actual = await importActual<typeof import('node:child_process')>()
@@ -37,7 +42,7 @@ vi.mock('electron', () => ({
 const realPlatform = process.platform
 Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
 
-const { SUPPORTED_TERMINALS, openTerminal } = await import('./terminal.js')
+const { SUPPORTED_TERMINALS, openTerminal, detectRunningTerminal } = await import('./terminal.js')
 
 afterAll(() => {
   Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true })
@@ -61,6 +66,45 @@ function shArgsOf(emitted: string): string[] {
 }
 
 describe('SUPPORTED_TERMINALS', () => {
+  it('does not pass the parent app identity to the terminal process', async () => {
+    vi.stubEnv('__CFBundleIdentifier', 'com.vicliu.agenthub')
+    try {
+      await openTerminal('echo test', 'Tern')
+      const options = spawn.mock.calls[0]?.[2] as unknown as { env?: NodeJS.ProcessEnv }
+      expect(options.env).toBeDefined()
+      expect(options.env?.__CFBundleIdentifier).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+  it('detects terminal processes without launching AppleScript applications', () => {
+    expect(detectRunningTerminal('/Applications/Tern.app/Contents/MacOS/tern\n')).toBe('Tern')
+    expect(detectRunningTerminal('tern\n')).toBe('Tern')
+    expect(detectRunningTerminal('/Applications/Other.app/Contents/MacOS/stable\n')).toBe(
+      'Terminal',
+    )
+    expect(detectRunningTerminal('/Applications/Ghostty.app/Contents/MacOS/ghostty\n')).toBe(
+      'Ghostty',
+    )
+    expect(detectRunningTerminal('/Applications/Spool.app/Contents/MacOS/Spool\n')).toBe('Terminal')
+    expect(execSync).not.toHaveBeenCalled()
+  })
+  it('includes Tern and runs its documented command entry without falling back', async () => {
+    expect(SUPPORTED_TERMINALS).toContain('Tern')
+    await openTerminal("echo 'test'", 'Tern', '/tmp/My Project')
+    expect(spawn).toHaveBeenCalledWith(
+      '/Applications/Tern.app/Contents/MacOS/tern',
+      ['-e', '/bin/zsh', '-lc', "cd '/tmp/My Project' && echo 'test'; exec /bin/zsh -l"],
+      { detached: true, stdio: 'ignore', env: expect.any(Object) },
+    )
+    expect(execSync).not.toHaveBeenCalled()
+  })
+  it('reports unavailable or unknown explicit preferences instead of using another terminal', () => {
+    existsSync.mockReturnValue(false)
+    expect(() => openTerminal('echo test', 'Tern')).toThrow('Terminal not installed: Tern')
+    expect(() => openTerminal('echo test', 'Unknown')).toThrow('Unsupported terminal: Unknown')
+    expect(execSync).not.toHaveBeenCalled()
+  })
   it('includes Ghostty', () => {
     expect(SUPPORTED_TERMINALS).toContain('Ghostty')
   })
@@ -68,7 +112,7 @@ describe('SUPPORTED_TERMINALS', () => {
 
 describe('openTerminal — Ghostty', () => {
   it('launches Ghostty via `open --args -e` and prepends cd for the cwd', () => {
-    openTerminal('spool-resume echo', 'Ghostty', '/tmp/proj')
+    void openTerminal('spool-resume echo', 'Ghostty', '/tmp/proj')
 
     expect(execSync).toHaveBeenCalledTimes(1)
     expect(execSync.mock.calls[0][0]).toBe(
@@ -77,7 +121,7 @@ describe('openTerminal — Ghostty', () => {
   })
 
   it('omits the cd prefix when no cwd is given', () => {
-    openTerminal('spool-resume echo', 'Ghostty')
+    void openTerminal('spool-resume echo', 'Ghostty')
 
     expect(execSync.mock.calls[0][0]).toBe(
       `open -a Ghostty --args -e sh -c 'spool-resume echo; exec $SHELL'`,
@@ -85,7 +129,7 @@ describe('openTerminal — Ghostty', () => {
   })
 
   it('keeps the window alive with `exec $SHELL`', () => {
-    openTerminal('spool-resume echo', 'Ghostty')
+    void openTerminal('spool-resume echo', 'Ghostty')
     expect(execSync.mock.calls[0][0]).toContain('exec $SHELL')
   })
 })
@@ -105,7 +149,7 @@ describe('openTerminal — CLI runners keep the payload as one shell token', () 
 
   for (const [terminal, prefix] of cases) {
     it(`${terminal}: a cwd with a space stays intact`, () => {
-      openTerminal('spool-resume echo', terminal, '/tmp/My Proj')
+      void openTerminal('spool-resume echo', terminal, '/tmp/My Proj')
 
       const emitted = execSync.mock.calls[0][0] as string
       expect(emitted).toMatch(prefix)
@@ -113,7 +157,7 @@ describe('openTerminal — CLI runners keep the payload as one shell token', () 
     })
 
     it(`${terminal}: a command with a single quote stays intact`, () => {
-      openTerminal(`say 'hi there'`, terminal)
+      void openTerminal(`say 'hi there'`, terminal)
 
       const emitted = execSync.mock.calls[0][0] as string
       expect(shArgsOf(emitted)).toEqual([`say 'hi there'; exec $SHELL`])
