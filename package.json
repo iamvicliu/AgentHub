@@ -2,14 +2,14 @@
   "name": "spool",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://github.com/iamvicliu/agenthub#readme",
+  "homepage": "https://github.com/iamvicliu/AgentHub#readme",
   "bugs": {
-    "url": "https://github.com/iamvicliu/agenthub/issues"
+    "url": "https://github.com/iamvicliu/AgentHub/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/iamvicliu/agenthub.git"
+    "url": "git+https://github.com/iamvicliu/AgentHub.git"
   },
   "type": "module",
   "scripts": {

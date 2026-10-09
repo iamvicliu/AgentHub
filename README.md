@@ -79,7 +79,7 @@
 - 不支持删除原始会话的 Agent，在 AgentHub 里点删除会先弹出说明，不会误删。
 - 各 Agent 在自己应用里**归档**的会话，AgentHub 也不显示（WorkBuddy、DeepSeek Harness、Cursor、Codex）。
 
-> ⚠️ **以下内容还没有用真实数据实测过**，只用测试数据验证了读取格式，可能有问题，遇到了欢迎[反馈](https://github.com/iamvicliu/agenthub/issues)：
+> ⚠️ **以下内容还没有用真实数据实测过**，只用测试数据验证了读取格式，可能有问题，遇到了欢迎[反馈](https://github.com/iamvicliu/AgentHub/issues)：
 >
 > - **Gemini CLI、OpenClaw、Pi** 三个 Agent 的全部功能（搜索阅读、在终端继续、删除）。
 > - **OpenCode 和 Pi** 用 `agenthub://` 链接跳转到某条消息。
@@ -87,7 +87,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/iamvicliu/agenthub/releases) 下载最新的 `AgentHub-版本号-arm64.dmg`（仅支持 Apple Silicon 芯片的 Mac）。
+1. 到 [Releases](https://github.com/iamvicliu/AgentHub/releases) 下载最新的 `AgentHub-版本号-arm64.dmg`（仅支持 Apple Silicon 芯片的 Mac）。
 2. 打开 DMG，把 AgentHub 拖进“应用程序”文件夹。
 3. 第一次打开时，macOS 会提示“无法验证开发者”或“已损坏，无法打开”。这是因为安装包**没有经过 Apple 公证**，不是文件真的坏了。任选一种方式放行：
    - 打开“系统设置 → 隐私与安全性”，在页面下方找到 AgentHub，点“仍要打开”；
@@ -183,7 +183,7 @@ packages/
 
 AgentHub 基于 [Spool](https://github.com/spool-lab/spool) `v0.6.3` 开发，感谢上游作者的开源实现。AgentHub 保留原作者署名和许可证，与 Spool 官方无关联，也不是 Spool 的新版本。
 
-问题和建议请提交到 [Issues](https://github.com/iamvicliu/agenthub/issues)。
+问题和建议请提交到 [Issues](https://github.com/iamvicliu/AgentHub/issues)。
 
 ## License
 
