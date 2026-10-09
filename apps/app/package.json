@@ -15,7 +15,6 @@
     "type": "git",
     "url": "git+https://github.com/iamvicliu/AgentHub.git"
   },
-  "funding": "https://github.com/sponsors/xinyao27",
   "main": "./out/main/index.mjs",
   "scripts": {
     "ensure:electron-runtime": "node -e \"require('electron')\"",

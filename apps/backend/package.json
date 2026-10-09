@@ -15,7 +15,6 @@
     "type": "git",
     "url": "git+https://github.com/spool-lab/spool.git"
   },
-  "funding": "https://github.com/sponsors/xinyao27",
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev ./public --inspector-port 9230 --d1 DB --kv SESSIONS --kv META --kv RATE --kv NONCE --r2 SNAPSHOTS --r2 OG --r2 AVATARS --r2 HUB",
