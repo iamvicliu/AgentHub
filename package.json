@@ -17,6 +17,7 @@
     "build": "vp run -r build",
     "package": "vp run --filter '@spool/app...' build && pnpm --filter @spool/app package",
     "package:mac": "vp run --filter '@spool/app...' build && pnpm --filter @spool/app package:mac",
+    "package:mac:x64": "vp run --filter '@spool/app...' build && pnpm --filter @spool/app package:mac:x64",
     "package:linux": "vp run --filter '@spool/app...' build && pnpm --filter @spool/app package:linux",
     "typecheck": "vp run -r typecheck",
     "pretest": "pnpm run rebuild:native:node && pnpm --filter @spool/app run ensure:electron-runtime",

@@ -1,157 +1,93 @@
-# Contributing to Spool
+# 参与 AgentHub 开发
 
-Thanks for your interest in contributing! Spool is early-stage and we welcome all kinds of help.
+欢迎提问题、提建议或者直接改代码。AgentHub 是个人维护的项目，基于开源项目 [Spool](https://github.com/spool-lab/spool) `v0.6.3` 开发，与 Spool 官方无关联。
 
-## Getting started
+- **发现问题或有想法**：到 [Issues](https://github.com/iamvicliu/AgentHub/issues) 提。报 bug 时请写上 AgentHub 版本、macOS 版本，以及是 Apple 芯片还是 Intel 芯片。
+- **小改动**（错别字、文档、界面细节）：可以直接提 Pull Request，不用先开 Issue。
+- **大改动**：请先开 Issue 说一下思路，避免白做。
+
+## 准备环境
+
+需要 macOS，以及 [pnpm](https://pnpm.io/) `11.14.0`（版本以根目录 `package.json` 的 `packageManager` 为准）。
 
 ```bash
-git clone https://github.com/spool-lab/spool.git
-cd spool
-pnpm install
+git clone https://github.com/iamvicliu/AgentHub.git
+cd AgentHub
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-## Native module runtimes
+开发模式的数据放在 `~/.agenthub-dev/`，不会碰你正在用的 AgentHub 的数据（`~/.agenthub/`）。也可以用环境变量 `SPOOL_DATA_DIR` 指定别的目录。
 
-`better-sqlite3` is used from both Node-based tests and the Electron app, and the workspace keeps a single copy that must match the runtime in use. The scripts manage the switching for you:
+## 原生模块 better-sqlite3
 
-- `pnpm test` (and `pnpm check`) rebuild for Node first via the root `pretest`.
-- `pnpm dev`, `pnpm test:e2e`, and the `package:*` scripts run through `scripts/with-electron-native.mjs`, which flips the binary to the Electron ABI for the wrapped command and restores the Node ABI afterwards.
+单元测试跑在 Node 上，应用跑在 Electron 上，两边需要的 `better-sqlite3` 二进制不一样，仓库里只保留一份。脚本会自动切换：
 
-An interrupted run (Ctrl-C skips the restore) can leave the wrong ABI behind. If you hit a `NODE_MODULE_VERSION` mismatch, rebuild manually for the runtime you are about to use:
+- `pnpm test` 运行前会先切到 Node 版本。
+- `pnpm dev`、`pnpm test:e2e` 和所有 `package:*` 打包命令会临时切到 Electron 版本，跑完再切回 Node 版本。
+
+如果中途按了 Ctrl-C，可能来不及切回去，之后会报 `NODE_MODULE_VERSION` 不匹配。这时按接下来要用的环境手动重建一次：
 
 ```bash
-pnpm run rebuild:native:node      # Node / vitest / core tests
-pnpm run rebuild:native:electron  # Electron app / Playwright e2e
+pnpm run rebuild:native:node      # 跑单元测试前
+pnpm run rebuild:native:electron  # 跑应用或 e2e 测试前
 ```
 
-## Installing a local build (macOS)
+## 提交改动前
 
-To test a production build of the app locally — builds, installs to `/Applications/Spool.app`, and launches it:
+1. 从 `main` 新建分支再改。
+2. 修 bug 请顺带加一个能复现这个 bug 的测试；加功能请覆盖主要用法和空数据、出错这类边界情况。
+3. 跑一遍下面的检查，都通过再提 Pull Request。
+
+```bash
+pnpm --filter @spool/app typecheck   # 类型检查
+pnpm exec vp test run apps/app/src packages/core/src packages/session-view/src --no-file-parallelism   # 单元测试
+pnpm test:e2e                        # 界面测试（Playwright），需要在桌面环境下运行
+pnpm lint                            # 代码检查
+```
+
+提交信息用这几种前缀开头：`feat:`（新功能）、`fix:`（修 bug）、`docs:`（文档）、`refactor:`（重构）、`build:`（构建和打包）、`chore:`（杂项）。
+
+## 打包和本地安装
+
+```bash
+pnpm run package:mac       # Apple 芯片 → apps/app/dist/mac-arm64/AgentHub.app
+pnpm run package:mac:x64   # Intel 芯片 → apps/app/dist/mac/AgentHub.app
+```
+
+改了打包相关的东西，请检查打出来的应用能正常启动：
+
+```bash
+codesign --verify --deep --strict --verbose=2 apps/app/dist/mac-arm64/AgentHub.app
+node apps/app/scripts/smoke-packaged.mjs apps/app/dist/mac-arm64/AgentHub.app
+node apps/app/scripts/package-size-report.mjs apps/app/dist/mac-arm64/AgentHub.app
+```
+
+不要只靠搜索代码引用就删掉打包里的文件，有些文件是运行时动态加载的，搜不到。
+
+想把自己构建的版本装到本机试用，可以一步完成：构建、装到 `/Applications/AgentHub.app`、打开。它会自动识别你的 Mac 是 Apple 芯片还是 Intel 芯片：
 
 ```bash
 pnpm dev:install:mac
 ```
 
-Requires Apple Silicon. The script quits any running Spool instance before replacing the bundle and strips the quarantine attribute so Gatekeeper doesn't block the unsigned local build.
+本地构建没有签名，脚本会自动去掉 macOS 的隔离标记，打开时不会被拦截。
 
-## Project structure
+## 代码结构
 
-```
+```text
 apps/
-  app/          Electron desktop app for preparing and sharing Sessions
-  cli/          CLI for Session preparation, sharing, reading, and Resume
-  web/          spool.pro website, docs, Profiles, account pages, and Session reader
-  backend/      Hub, identity, publication, and media API on Cloudflare
+  app/          AgentHub 桌面应用（Electron）
 packages/
-  core/         Local Session ingestion, organization, SQLite, and search
-  redact/       Sensitive-data detection shared by publishing surfaces
-  session-kit/  Browser-safe canonical records, views, and Session diffs
-  session-view/ Conversation renderer shared by Desktop and Web
-  share-kit/    Curated `.spool` documents, templates, and export primitives
+  core/         读取各 Agent 的本地会话、建索引（SQLite）、全文搜索
+  redact/       敏感信息检测
+  session-kit/  会话数据模型和解析
+  session-view/ 会话渲染组件
 ```
 
-## Publishing: local development stack
+AgentHub 只发布桌面应用。下面这些是上游 Spool 留下的，AgentHub 不使用，一般不用管：
 
-Most contributions never need this—`pnpm dev` runs the desktop app without
-it. Set it up when working on the Hub, public Session pages, account/Profile
-surfaces, or Desktop publishing flow.
+- `apps/cli`、`apps/web`、`apps/backend`、`packages/share-kit`：上游的命令行工具、网站和云端分享服务。
+- `scripts/share-dev.sh`、`scripts/release.sh`：上游云服务的开发脚本和 npm 包发布脚本，不要运行。
 
-The stack is three processes: backend (Wrangler, :8788), web
-(Vite, :3002), and the Electron app pointed at the local backend.
-`./scripts/share-dev.sh` boots all three. One-time setup first:
-
-1. **WorkOS dev environment** — create one at
-   [dashboard.workos.com](https://dashboard.workos.com) (never reuse prod
-   credentials). Note the environment client id (`client_...`) and an API
-   key (`sk_...`), and register TWO redirect URIs:
-   - `http://localhost:3002/api/auth/workos/callback` (web sign-in) —
-     without this, web sign-in fails with a redirect_uri mismatch.
-   - `spool://auth/callback` (desktop sign-in) — the app runs the PKCE
-     authorize in the system browser and gets the code back on this
-     custom scheme.
-
-   The CLI needs no credentials of its own: `spool login` uses the
-   browser-approval flow at `/cli-auth`, which rides on the web session.
-
-2. **Two gitignored config files** (wrangler and electron-vite each have
-   their own loader):
-
-   ```bash
-   cp apps/backend/.dev.vars.example apps/backend/.dev.vars
-   cp apps/app/.env.development.local.example apps/app/.env.development.local
-   ```
-
-   Fill in the WorkOS values per the comments in each file — the API key
-   goes only in `.dev.vars`; the app env needs just the (public) client
-   id as `SPOOL_WORKOS_CLIENT_ID`.
-
-3. **Local D1 schema**:
-
-   ```bash
-   cd apps/backend
-   corepack pnpm wrangler d1 migrations apply spool-share-db --local
-   ```
-
-4. **Run it**:
-
-   ```bash
-   ./scripts/share-dev.sh
-   ```
-
-   In another terminal, the repository-local CLI automatically selects the
-   local Hub:
-
-   ```bash
-   pnpm spool login
-   ```
-
-   Set `SPOOL_HUB_URL` explicitly only when you want another Hub.
-
-Sign in with any method AuthKit offers (email code works out of the box);
-data lands in the local D1/KV/R2 under
-`apps/backend/.wrangler/state/`. The app keeps its dev library
-in `~/.spool-dev/` as usual.
-
-## Making changes
-
-1. Fork the repo and create a branch from `main`
-2. Make your changes
-3. Run `pnpm check` to make sure nothing is broken
-4. Open a pull request
-
-## Verifying changes
-
-Run the checks for the surface you touched; before merging anything substantial, run the full matrix:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm check                          # typecheck + lint + unit tests
-pnpm --filter @spool/app test:e2e   # Playwright, needs a desktop session
-```
-
-For desktop packaging changes, also verify the packaged app — never remove a packaged asset based on import search alone; dynamic loading hides from grep:
-
-```bash
-pnpm run package:mac                # build + electron-builder (arm64)
-codesign --verify --deep --strict --verbose=2 \
-  apps/app/dist/mac-arm64/Spool.app
-node apps/app/scripts/smoke-packaged.mjs apps/app/dist/mac-arm64/Spool.app
-node apps/app/scripts/package-size-report.mjs apps/app/dist/mac-arm64/Spool.app
-```
-
-## What to work on
-
-- Check [Issues](https://github.com/spool-lab/spool/issues) for bugs and feature requests
-- Small fixes (typos, docs, UI polish) are always welcome — no issue needed
-- For larger changes, open an issue first so we can discuss the approach
-
-## Style
-
-- `pnpm lint` runs oxlint (config in `.oxlintrc.json`); beyond that, match the surrounding code style
-- Commit messages: `feat:`, `fix:`, `docs:`, `ci:`, `refactor:`
-
-## Community
-
-- [Discord](https://discord.gg/aqeDxQUs5E) for questions and discussion
-- [Issues](https://github.com/spool-lab/spool/issues) for bugs and feature requests
+代码里的包名（`@spool/app`）和环境变量（`SPOOL_*`）也是上游留下的，改名牵涉太多，暂时保留。

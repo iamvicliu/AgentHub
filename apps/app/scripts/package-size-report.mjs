@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { getRawHeader } from '@electron/asar'
 
 const appPath = resolve(
-  process.argv.slice(2).find((arg) => !arg.startsWith('-')) ?? 'dist/mac-arm64/Spool.app',
+  process.argv.slice(2).find((arg) => !arg.startsWith('-')) ?? 'dist/mac-arm64/AgentHub.app',
 )
 const json = process.argv.includes('--json')
 const contents = join(appPath, 'Contents')

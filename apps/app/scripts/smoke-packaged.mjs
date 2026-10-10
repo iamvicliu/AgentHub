@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from '@playwright/test'
 
 const appDir = resolve(
-  process.argv.slice(2).find((arg) => !arg.startsWith('-')) ?? 'dist/mac-arm64/Spool.app',
+  process.argv.slice(2).find((arg) => !arg.startsWith('-')) ?? 'dist/mac-arm64/AgentHub.app',
 )
 const fullPrivacyFilter = process.argv.includes('--full-pf')
 const keepProfile = process.argv.includes('--keep-profile')

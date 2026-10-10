@@ -8,7 +8,7 @@
 
 - **只读、不打扰**：读取各 Agent 写在本机的会话记录，不做 IDE、不管理 worktree，也不改你的代码。
 - **全部留在本机**：会话和索引都存在你的电脑上，不上传。
-- **macOS 桌面应用**（Apple Silicon 和 Intel），界面支持简体中文、繁體中文、English、日本語、한국어、Deutsch、Français。
+- **macOS 桌面应用**，Apple 芯片（M1/M2/M3/M4 等）和 Intel 芯片的 Mac 都能用，界面支持简体中文、繁體中文、English、日本語、한국어、Deutsch、Français。
 
 ## 能做什么
 
@@ -49,7 +49,7 @@
 
 ### Raycast 扩展：不开窗口也能搜
 
-配合 AgentHub 的 Raycast 扩展「AI会话搜索」，在 Raycast 里就能直接搜遍所有 Agent 的会话：
+配合 AgentHub 的 Raycast 扩展「AgentHub会话搜索」，在 Raycast 里就能直接搜遍所有 Agent 的会话：
 
 - 输入关键词即时搜索，也可以按 Agent 筛选；留空显示最近的消息。
 - 右侧预览消息正文，回车查看这条消息的前后文。
@@ -57,7 +57,7 @@
 - 还可以复制消息或会话 ID、在访达中显示原始记录；Codex 会话可以直接在 Codex 里打开。
 - 只读访问 AgentHub 的本地索引，不改数据、不联网。
 
-> Raycast 扩展需要另外安装，**稍后开源**。
+> Raycast 扩展需要另外安装，源码和安装步骤见 [AgentHub会话搜索](https://github.com/iamvicliu/Script/tree/main/Raycast/AgentHub-Search)。
 
 ### 第三方 App 对接
 
@@ -86,10 +86,16 @@
 > - **Gemini CLI、OpenClaw、Pi** 三个 Agent 的全部功能（搜索阅读、在终端继续、删除）。
 > - **OpenCode 和 Pi** 用 `agenthub://` 链接跳转到某条消息。
 > - Cursor 的命令行版（cursor-agent）的会话**不支持**，只支持 Cursor 编辑器里的对话。
+> - **Intel 芯片版**是在 Apple 芯片的 Mac 上交叉编译的，还没在 Intel 真机上运行过。
 
 ## 安装
 
-1. 到 [Releases](https://github.com/iamvicliu/AgentHub/releases) 下载对应芯片的安装包：Apple Silicon 下载 `AgentHub-版本号-arm64.dmg`，Intel 下载 `AgentHub-版本号-x64.dmg`。
+1. 到 [Releases](https://github.com/iamvicliu/AgentHub/releases) 下载和你的 Mac 芯片对应的安装包：
+   - **Apple 芯片**（M1、M2、M3、M4 等）：`AgentHub-版本号-Apple-Silicon.dmg`
+   - **Intel 芯片**：`AgentHub-版本号-Intel.dmg`
+
+   不确定是哪种芯片：点屏幕左上角的苹果菜单 → 「关于本机」，「芯片」一栏写 Apple M 开头的就是 Apple 芯片，「处理器」一栏写 Intel 的就是 Intel 芯片。
+
 2. 打开 DMG，把 AgentHub 拖进“应用程序”文件夹。
 3. 第一次打开时，macOS 会提示“无法验证开发者”或“已损坏，无法打开”。这是因为安装包**没有经过 Apple 公证**，不是文件真的坏了。任选一种方式放行：
    - 打开“系统设置 → 隐私与安全性”，在页面下方找到 AgentHub，点“仍要打开”；
@@ -161,7 +167,7 @@ pnpm exec vp test run apps/app/src packages/core/src packages/session-view/src -
 pnpm run package:mac
 ```
 
-- 目标平台为 macOS（Apple Silicon 与 Intel）。签名和公证需要你自己的开发者证书。
+- 目标平台为 macOS，Apple 芯片用 `pnpm run package:mac`，Intel 芯片用 `pnpm run package:mac:x64`。签名和公证需要你自己的开发者证书。
 - `better-sqlite3` 必须匹配运行时；切到 Electron 开发时运行 `pnpm run rebuild:native:electron`。
 - 不要使用上游的 `scripts/release.sh`：它面向上游的 npm 包发布，AgentHub 只发布桌面应用。
 

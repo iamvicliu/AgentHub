@@ -8,7 +8,7 @@ After juggling several AI tools, finding "how did I solve that last week" usuall
 
 - **Read-only, non-intrusive**: reads the session files your agents already write locally. It's not an IDE, doesn't manage worktrees, and never touches your code.
 - **Everything stays local**: sessions and the index live on your machine; nothing is uploaded.
-- **macOS desktop app** (Apple Silicon and Intel), with a UI in 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, and Français.
+- **macOS desktop app** for both Apple silicon (M1/M2/M3/M4 and later) and Intel Macs, with a UI in 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, and Français.
 
 ## What it does
 
@@ -49,7 +49,7 @@ Scans sessions locally for API keys, passwords, private keys, and personal infor
 
 ### Raycast extension: search without opening the window
 
-Pair AgentHub with its Raycast extension "AI会话搜索" to search every agent's sessions right inside Raycast:
+Pair AgentHub with its Raycast extension "AgentHub会话搜索" (AgentHub Session Search) to search every agent's sessions right inside Raycast:
 
 - Type to search instantly, or filter by agent; leave it empty to show recent messages.
 - Preview the message body on the right; press Enter to see that message in context.
@@ -57,7 +57,7 @@ Pair AgentHub with its Raycast extension "AI会话搜索" to search every agent'
 - Copy a message or session ID, or reveal the original record in Finder; Codex sessions can be opened directly in Codex.
 - Read-only access to AgentHub's local index — no data changes, no network.
 
-> The Raycast extension must be installed separately and will be open-sourced later.
+> The Raycast extension is installed separately; see [AgentHub会话搜索](https://github.com/iamvicliu/Script/tree/main/Raycast/AgentHub-Search) for source and install steps.
 
 ### Third-party app integration
 
@@ -86,10 +86,16 @@ Pair AgentHub with its Raycast extension "AI会话搜索" to search every agent'
 > - All features of **Gemini CLI, OpenClaw, and Pi** (search/read, resume in terminal, delete).
 > - `agenthub://` deep links into a specific message for **OpenCode and Pi**.
 > - Cursor's command-line variant (cursor-agent) is **not supported** — only conversations in the Cursor editor.
+> - The **Intel build** is cross-compiled on an Apple silicon Mac and hasn't been run on real Intel hardware yet.
 
 ## Installation
 
-1. From [Releases](https://github.com/iamvicliu/AgentHub/releases), download `AgentHub-<version>-arm64.dmg` for Apple Silicon, or `AgentHub-<version>-x64.dmg` for Intel Macs.
+1. From [Releases](https://github.com/iamvicliu/AgentHub/releases), download the installer that matches your Mac:
+   - **Apple silicon** (M1, M2, M3, M4, etc.): `AgentHub-<version>-Apple-Silicon.dmg`
+   - **Intel**: `AgentHub-<version>-Intel.dmg`
+
+   Not sure which one you have? Open the Apple menu → About This Mac. If it lists a “Chip” starting with Apple M, it’s Apple silicon; if it lists an Intel “Processor”, it’s Intel.
+
 2. Open the DMG and drag AgentHub into Applications.
 3. On first launch macOS will say "cannot verify the developer" or "damaged and can't be opened". This is because the package is **not Apple-notarized** — the file is not actually broken. Allow it either way:
    - Open "System Settings → Privacy & Security" and click "Open Anyway" for AgentHub;
@@ -161,7 +167,7 @@ pnpm exec vp test run apps/app/src packages/core/src packages/session-view/src -
 pnpm run package:mac
 ```
 
-- Target platform is macOS (Apple Silicon and Intel). Signing and notarization require your own developer certificate.
+- Target platform is macOS: run `pnpm run package:mac` for Apple silicon and `pnpm run package:mac:x64` for Intel. Signing and notarization require your own developer certificate.
 - `better-sqlite3` must match the runtime; run `pnpm run rebuild:native:electron` when switching to Electron development.
 - Don't use upstream's `scripts/release.sh`: it publishes the upstream npm packages; AgentHub only ships the desktop app.
 
