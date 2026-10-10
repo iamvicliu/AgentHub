@@ -32,6 +32,9 @@
     "build:electron": "pnpm run build:deps && pnpm run build",
     "package": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --publish never",
     "package:mac": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --mac --arm64 --publish never",
+    "package:mac:x64": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --mac --x64 --publish never",
+    "package:mac:publish": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --mac --arm64 --publish always",
+    "package:mac:x64:publish": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --mac --x64 --publish always",
     "package:linux": "node ../../scripts/with-electron-native.mjs pnpm exec electron-builder --linux --publish never",
     "smoke:native:electron": "node ../../scripts/with-electron-native.mjs pnpm exec electron ../../scripts/check-electron-native.cjs",
     "report:package-size": "node scripts/package-size-report.mjs",
@@ -162,16 +165,10 @@
       "notarize": true,
       "target": [
         {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
+          "target": "dmg"
         },
         {
-          "target": "zip",
-          "arch": [
-            "arm64"
-          ]
+          "target": "zip"
         }
       ]
     },

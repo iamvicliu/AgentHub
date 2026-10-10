@@ -52,6 +52,29 @@ export async function launchDemoApp(
     )
   }
 
+  // Isolate every supported agent. buildDemoFixtures seeds only Claude/Codex/
+  // Gemini, so the rest point at empty dirs — otherwise a capture falls back to
+  // the machine's real session data (privacy leak into public screenshots).
+  const otherAgents = ['cursor', 'dsh', 'hermes', 'openclaw', 'opencode', 'pi', 'workbuddy']
+  for (const name of otherAgents) mkdirSync(join(tmpDir, name), { recursive: true })
+
+  const agentEnv: Record<string, string> = {
+    SPOOL_CURSOR_DIR: join(tmpDir, 'cursor'),
+    SPOOL_CURSOR_STATE_DB: join(tmpDir, 'cursor', 'state.vscdb'),
+    CURSOR_DATA_DIR: join(tmpDir, 'cursor'),
+    SPOOL_DSH_DIR: join(tmpDir, 'dsh'),
+    DSH_HOME: join(tmpDir, 'dsh'),
+    SPOOL_HERMES_DIR: join(tmpDir, 'hermes'),
+    HERMES_HOME: join(tmpDir, 'hermes'),
+    SPOOL_OPENCLAW_DIR: join(tmpDir, 'openclaw'),
+    OPENCLAW_STATE_DIR: join(tmpDir, 'openclaw'),
+    SPOOL_OPENCODE_DIR: join(tmpDir, 'opencode'),
+    OPENCODE_DATA_DIR: join(tmpDir, 'opencode'),
+    SPOOL_PI_DIR: join(tmpDir, 'pi'),
+    SPOOL_WORKBUDDY_DIR: join(tmpDir, 'workbuddy'),
+    WORKBUDDY_CONFIG_DIR: join(tmpDir, 'workbuddy'),
+  }
+
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     SPOOL_DATA_DIR: join(tmpDir, 'data'),
@@ -61,6 +84,7 @@ export async function launchDemoApp(
     SPOOL_CODEX_DIR: join(tmpDir, 'codex', 'sessions'),
     SPOOL_GEMINI_DIR: join(tmpDir, 'gemini-cli-home'),
     GEMINI_CLI_HOME: join(tmpDir, 'gemini-cli-home'),
+    ...agentEnv,
     ELECTRON_DISABLE_GPU: '1',
     SPOOL_E2E_TEST: '1',
   }
