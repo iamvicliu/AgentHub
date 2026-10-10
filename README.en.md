@@ -57,7 +57,7 @@ Pair AgentHub with its Raycast extension "AgentHub会话搜索" (AgentHub Sessio
 - Copy a message or session ID, or reveal the original record in Finder; Codex sessions can be opened directly in Codex.
 - Read-only access to AgentHub's local index — no data changes, no network.
 
-> The Raycast extension is installed separately; see [AgentHub会话搜索](https://github.com/iamvicliu/Script/tree/main/Raycast/AgentHub-Search) for source and install steps.
+> The Raycast extension is installed separately; see [AgentHub会话搜索](https://github.com/iamvicliu/Raycast-Extensions/tree/main/AgentHub-Search) for source and install steps.
 
 ### Third-party app integration
 

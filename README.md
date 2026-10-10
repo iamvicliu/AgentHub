@@ -57,7 +57,7 @@
 - 还可以复制消息或会话 ID、在访达中显示原始记录；Codex 会话可以直接在 Codex 里打开。
 - 只读访问 AgentHub 的本地索引，不改数据、不联网。
 
-> Raycast 扩展需要另外安装，源码和安装步骤见 [AgentHub会话搜索](https://github.com/iamvicliu/Script/tree/main/Raycast/AgentHub-Search)。
+> Raycast 扩展需要另外安装，源码和安装步骤见 [AgentHub会话搜索](https://github.com/iamvicliu/Raycast-Extensions/tree/main/AgentHub-Search)。
 
 ### 第三方 App 对接
 
