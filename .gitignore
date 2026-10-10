@@ -94,7 +94,3 @@ videos/*/renders/
 videos/*/.hyperframes/
 videos/*/node_modules/
 
-# Private working notes, kept local only
-/开发日志.md
-/TODO.md
-/CHANGELOG.md
