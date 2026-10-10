@@ -10,6 +10,8 @@ After juggling several AI tools, finding "how did I solve that last week" usuall
 - **Everything stays local**: sessions and the index live on your machine; nothing is uploaded.
 - **macOS desktop app** for both Apple silicon (M1/M2/M3/M4 and later) and Intel Macs, with a UI in 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, and Français.
 
+![AgentHub session list: Claude Code, Codex CLI, and Gemini CLI sessions in one list](docs/images/en-library.jpg)
+
 ## What it does
 
 ### One list for every session
@@ -23,6 +25,8 @@ After juggling several AI tools, finding "how did I solve that last week" usuall
 - Searches titles and body at once, with matches highlighted. Title matches rank first; you can switch to chronological order.
 - Press `⌘K` to start a search from anywhere.
 
+![Search results with matching words highlighted](docs/images/en-search.jpg)
+
 ### Reading
 
 - Clearly separates "you" from the agent's messages.
@@ -30,6 +34,8 @@ After juggling several AI tools, finding "how did I solve that last week" usuall
 - **Message outline**: lists every question you asked in the session; click to jump, drag to resize the outline.
 - **Find in session**: `⌘F` to find, `⌘G` / `⌘⇧G` for next / previous; `⌘[` goes back to the list with filters and search intact.
 - Internal content such as system prompts and sub-agent records is hidden by default; turn it on in settings when you need to debug.
+
+![Reading a session, with the message outline on the right](docs/images/en-reader.jpg)
 
 ### Managing
 
@@ -64,6 +70,8 @@ Pair AgentHub with its Raycast extension "AgentHub会话搜索" (AgentHub Sessio
 `agenthub://session/...` links open a specific session and highlight one message, making it easy to jump back from notes, Raycast, and other tools.
 
 ## Supported agents
+
+![The Sources page in settings, listing all 10 agents and their session counts](docs/images/en-sources.jpg)
 
 | Agent            | Search & read | Resume in terminal | Delete original in AgentHub | Rename syncs back | Tested with real sessions |
 | ---------------- | ------------- | ------------------ | --------------------------- | ----------------- | ------------------------- |
