@@ -1,6 +1,7 @@
 {
   "name": "@spool-lab/redact",
   "version": "0.6.3",
+  "private": true,
   "description": "Local, pure-TS sensitive-data detection for Spool sessions. Pattern + checksum + entropy pipeline today; pluggable provider boundary for future on-device ML (e.g. OpenAI Privacy Filter via transformers.js).",
   "homepage": "https://github.com/spool-lab/spool#readme",
   "bugs": {
