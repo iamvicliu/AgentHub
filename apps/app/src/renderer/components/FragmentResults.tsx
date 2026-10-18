@@ -16,7 +16,7 @@ type FragmentRowResult = FragmentResult & { kind: 'fragment' }
 type Props = {
   results: FragmentRowResult[]
   query: string
-  onOpenSession: (uuid: string, messageId?: number) => void
+  onOpenSession: (uuid: string, messageId: number | undefined) => void
   defaultSortOrder: SearchSortOrder
   onCopySessionId: (source: FragmentResult['source']) => void
   onShareSession?: (uuid: string) => void
@@ -215,12 +215,13 @@ function FragmentRow({
         <div className="text-warm-muted dark:text-dark-muted mb-1.5 truncate text-xs">
           {project}
           {result.profileLabel && <span> · {result.profileLabel}</span>}
-          {result.matchCount > 1 && (
-            <span data-testid="match-count">
-              {' '}
-              · {t('fragment.matchCount_other', { count: result.matchCount })}
-            </span>
-          )}
+          <span
+            className="text-accent dark:text-accent-dark text-xs leading-4 font-semibold"
+            data-testid="match-count"
+          >
+            {' '}
+            · {t('fragment.matchCount', { count: result.matchCount })}
+          </span>
         </div>
 
         <p

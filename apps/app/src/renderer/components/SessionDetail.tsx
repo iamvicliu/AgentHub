@@ -45,6 +45,8 @@ type Props = {
   onCopySessionId: (source: Session['source']) => void
   onBack?: () => void
   onShare?: (session: Session, messages: Message[]) => void
+  /** Query from the search list; opens the find bar positioned on the hit. */
+  initialFindQuery?: string
 }
 
 // Keystrokes inside this window coalesce into one find projection — the
@@ -58,6 +60,7 @@ export default function SessionDetail({
   onCopySessionId,
   onBack,
   onShare,
+  initialFindQuery,
 }: Props) {
   const { t, i18n } = useTranslation()
   const [session, setSession] = useState<Session | null>(null)
@@ -130,6 +133,16 @@ export default function SessionDetail({
   const [findQuery, setFindQuery] = useState('')
   const [settledFindQuery, setSettledFindQuery] = useState('')
   const [activeMatchIndex, setActiveMatchIndex] = useState(0)
+  // Arriving from a search result: seed the find bar with that query so the
+  // reader can step between hits inside this session.
+  const seededFindRef = useRef(false)
+  useEffect(() => {
+    if (seededFindRef.current) return
+    if (!initialFindQuery?.trim()) return
+    seededFindRef.current = true
+    setFindQuery(initialFindQuery)
+    setShowFindBar(true)
+  }, [initialFindQuery])
   const listRef = useRef<MessageListHandle>(null)
   const activeFindMatchRef = useRef<HTMLElement | null>(null)
   const isDark = useIsDark()
@@ -277,12 +290,21 @@ export default function SessionDetail({
     return undefined
   }, [loading, readingTarget, visibleMessages])
 
+  // Leaving a session clears the find bar. Arriving from a search result
+  // seeds it instead, so that reset must not run on the initial mount —
+  // otherwise it would immediately close the bar the seed just opened.
+  const seededSessionRef = useRef<string | null>(null)
   useEffect(() => {
+    const fromSearch = Boolean(initialFindQuery?.trim())
+    if (fromSearch && seededSessionRef.current !== sessionUuid) {
+      seededSessionRef.current = sessionUuid
+      return
+    }
     setShowFindBar(false)
     setFindFocusNonce(0)
     setFindResultNonce(0)
     clearFind()
-  }, [sessionUuid, clearFind])
+  }, [sessionUuid, clearFind, initialFindQuery])
 
   useEffect(() => {
     if (!effectiveFindQuery || totalFindMatches === 0) {

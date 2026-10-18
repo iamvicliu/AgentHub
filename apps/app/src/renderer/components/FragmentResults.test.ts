@@ -46,4 +46,38 @@ describe('FragmentResults', () => {
     )
     expect(html).toContain('&lt;script&gt;example&lt;/script&gt;')
   })
+
+  it('always shows the match count, styled like the session row message count', () => {
+    const html = renderToStaticMarkup(
+      createElement(FragmentResults, {
+        results: [
+          {
+            kind: 'fragment',
+            rank: 1,
+            sessionId: 1,
+            sessionUuid: 'session-test',
+            sessionTitle: 'Only one hit',
+            matchCount: 1,
+            matchType: 'fts',
+            source: 'codex',
+            project: '/tmp/test',
+            startedAt: '2026-01-01T00:00:00Z',
+            messageTimestamp: '2026-10-06T12:00:00Z',
+            messageId: 1,
+            messageRole: 'user',
+            snippet: 'body',
+          },
+        ],
+        query: 'hit',
+        defaultSortOrder: 'relevance',
+        onOpenSession: () => {},
+        onCopySessionId: () => {},
+        onShareSession: () => {},
+      }),
+    )
+    // A single match still reports its count; the old markup hid it.
+    expect(html).toContain('data-testid="match-count"')
+    expect(html).toContain('fragment.matchCount')
+    expect(html).toContain('text-accent dark:text-accent-dark text-xs leading-4 font-semibold')
+  })
 })

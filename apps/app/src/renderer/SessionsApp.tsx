@@ -57,6 +57,9 @@ export default function SessionsApp() {
     messageId?: number | undefined
     linkNonce?: number
   } | null>(null)
+  // Set when a hit is opened from the result list; the session reader then
+  // shows its own find bar so the user can step between matches in place.
+  const [openedFromSearch, setOpenedFromSearch] = useState(false)
   const [status, setStatus] = useState<StatusInfo | null>(null)
   const [syncing, setSyncing] = useState(false)
   // A background refresh (the file watcher saw an agent write) keeps the list
@@ -443,7 +446,10 @@ export default function SessionsApp() {
               showSourceFilter={false}
               showSortControl={false}
               defaultSortOrder={searchSort}
-              onOpenSession={(uuid, messageId) => setSelected({ uuid, messageId })}
+              onOpenSession={(uuid, messageId) => {
+                setSelected({ uuid, messageId })
+                setOpenedFromSearch(true)
+              }}
               onCopySessionId={() => toast.success(t('common.copied'))}
             />
           ) : (
@@ -489,8 +495,12 @@ export default function SessionsApp() {
             sessionUuid={selected.uuid}
             targetMessageId={selected.messageId ?? null}
             persistTargetHighlight={selected.linkNonce !== undefined}
-            onBack={() => setSelected(null)}
+            onBack={() => {
+              setSelected(null)
+              setOpenedFromSearch(false)
+            }}
             onCopySessionId={() => toast.success(t('common.copied'))}
+            {...(openedFromSearch && query.trim() ? { initialFindQuery: query } : {})}
           />
         </div>
       )}
