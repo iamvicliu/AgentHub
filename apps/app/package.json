@@ -1,6 +1,6 @@
 {
   "name": "@spool/app",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "homepage": "https://github.com/iamvicliu/AgentHub#readme",
   "bugs": {
@@ -135,6 +135,8 @@
     "files": [
       "**/*",
       "!e2e/**/*",
+      "!test-results/**/*",
+      "!playwright-report/**/*",
       "!artifacts/**/*",
       "!src/**/*",
       "!**/*.map",
