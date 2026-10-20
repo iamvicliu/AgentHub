@@ -16,6 +16,46 @@ function parse(records: Record<string, unknown>[]) {
   return parseClaudeSessionText(raw, '/fake/session.jsonl')
 }
 
+describe('parseClaudeSessionText — record types', () => {
+  it('ignores internal records that carry a message payload, such as api-request-blob', () => {
+    const result = parse([
+      baseRecord({
+        type: 'user',
+        uuid: 'u1',
+        message: { role: 'user', content: 'hello' },
+      }),
+      {
+        type: 'api-request-blob',
+        sessionId: 'test-uuid',
+        hash: 'h1',
+        message: { role: 'system', content: 'sys prompt' },
+      },
+      {
+        type: 'api-request-blob',
+        sessionId: 'test-uuid',
+        hash: 'h2',
+        message: { role: 'user', content: 'hello' },
+      },
+      {
+        type: 'api-request-blob',
+        sessionId: 'test-uuid',
+        hash: 'h3',
+        message: { role: 'assistant', content: 'hi' },
+      },
+      baseRecord({
+        type: 'assistant',
+        uuid: 'a1',
+        message: { role: 'assistant', content: 'hi', model: 'claude-opus-4-6' },
+      }),
+    ])
+
+    expect(result.kind).toBe('parsed')
+    if (result.kind !== 'parsed') return
+    expect(result.session.messages.map((m) => m.uuid)).toEqual(['u1', 'a1'])
+    expect(result.session.messages.every((m) => typeof m.timestamp === 'string')).toBe(true)
+  })
+})
+
 describe('parseClaudeSessionText — tag stripping', () => {
   it('leaves no "<script" substring in the title or extracted text for nested-tag payloads', () => {
     // Regression for js/incomplete-multi-character-sanitization and

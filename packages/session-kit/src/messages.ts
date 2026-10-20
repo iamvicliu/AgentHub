@@ -259,6 +259,11 @@ export function parseClaudeSessionText(raw: string, filePath: string): ParseProv
       continue
     }
 
+    // Only conversation records carry messages. Newer Claude Code versions also
+    // write internal records with a `message` payload (e.g. `api-request-blob`)
+    // that have no timestamp and duplicate the conversation.
+    if (type !== 'user' && type !== 'assistant') continue
+
     const msgObj = record['message'] as Record<string, unknown> | undefined
     if (!msgObj) continue
 
