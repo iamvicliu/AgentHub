@@ -1,6 +1,6 @@
 {
   "name": "@spool/app",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "homepage": "https://github.com/iamvicliu/AgentHub#readme",
   "bugs": {
@@ -141,7 +141,11 @@
       "!src/**/*",
       "!**/*.map",
       "!node_modules/onnxruntime-node",
-      "!node_modules/onnxruntime-node/**"
+      "!node_modules/onnxruntime-node/**",
+      "!node_modules/@openai/codex-*",
+      "!node_modules/@openai/codex-*/**",
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*",
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     ],
     "asarUnpack": [
       "node_modules/better-sqlite3/**",
