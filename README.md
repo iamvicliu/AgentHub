@@ -2,6 +2,10 @@
 
 # AgentHub
 
+<!-- yarkr:badges:start -->
+[![Indexed on Yarkr](https://api.yarkr.com/functions/v1/api/api/v1/badges/repos/iamvicliu/AgentHub/version.svg)](https://yarkr.com/arks/iamvicliu/agenthub)
+<!-- yarkr:badges:end -->
+
 **把 Claude Code、Codex、Cursor 等 10 种 AI Agent 的本地会话汇到一处，统一搜索、阅读和管理。**
 
 用了好几个 AI 工具以后，想找回“上周那次是怎么解决的”，往往得挨个打开各个工具翻各家的历史记录。AgentHub 把这些会话收进一个列表：一次搜索就能搜遍所有 Agent，打开就能顺畅地读完整段对话。
@@ -200,6 +204,40 @@ packages/
 AgentHub 基于 [Spool](https://github.com/spool-lab/spool) `v0.6.3` 开发，感谢上游作者的开源实现。AgentHub 保留原作者署名和许可证，与 Spool 官方无关联，也不是 Spool 的新版本。
 
 问题和建议请提交到 [Issues](https://github.com/iamvicliu/AgentHub/issues)。
+
+<!-- yarkr:install:start -->
+## Install with Yarkr
+
+This repo is indexed on [Yarkr](https://yarkr.com/arks/iamvicliu/agenthub) as the ark [iamvicliu/agenthub](https://yarkr.com/arks/iamvicliu/agenthub), so its skills install into Claude Code, Codex, Cursor and other agent harnesses with one command.
+
+### CLI
+
+Install the whole ark, which Yarkr keeps equal to this repo:
+
+```bash
+npx yarkr-cli sync iamvicliu/agenthub
+```
+
+Or add individual skills:
+
+```bash
+npx yarkr-cli add skill:iamvicliu/agenthub/adapt
+npx yarkr-cli add skill:iamvicliu/agenthub/clarify
+npx yarkr-cli add skill:iamvicliu/agenthub/launch-video
+```
+
+No Node.js? `curl -fsSL https://yarkr.com/install.sh | sh` (macOS, Linux) or `irm https://yarkr.com/install.ps1 | iex` (Windows PowerShell) installs `yarkr` as a standalone binary; then type `yarkr` in place of `npx yarkr-cli`.
+
+### MCP
+
+Connect your agent to the ark over MCP:
+
+```bash
+npx yarkr-cli mcp add iamvicliu/agenthub
+```
+
+Or point any MCP client at `https://api.yarkr.com/functions/v1/api/mcp/o/iamvicliu/agenthub`.
+<!-- yarkr:install:end -->
 
 ## License
 
